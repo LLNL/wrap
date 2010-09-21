@@ -784,12 +784,12 @@ def fn(out, scope, args, children):
             for child in children:
                 child.execute(out, scope)
 
-        out.write("/* ================== C Wrappers for %s ================== */\n" % decl.name)
+        out.write("/* ================== C Wrappers for %s ================== */\n" % fn_name)
         write_c_wrapper(out, fn, return_val, write_body)
         if output_fortran_wrappers:
-            out.write("/* =============== Fortran Wrappers for %s =============== */\n" % decl.name)
+            out.write("/* =============== Fortran Wrappers for %s =============== */\n" % fn_name)
             write_fortran_wrappers(out, fn, return_val)
-            out.write("/* ================= End Wrappers for %s ================= */\n\n\n" % decl.name)
+            out.write("/* ================= End Wrappers for %s ================= */\n\n\n" % fn_name)
 
 @macro
 def forallfn(out, scope, args, children):
