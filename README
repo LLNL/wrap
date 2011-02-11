@@ -1,0 +1,160 @@
+wrap:  a PMPI wrapper generator.
+
+https://github.com/tgamblin/wrap
+
+Use:  wrap.py [-dfg] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
+
+-d	dump MPI function declarations parsed out of mpi.h 
+-f	Generate fortran wrappers in addition to C wrappers.  
+	See below for details.
+-g      Generate reentry guards around wrapper functions.
+	Some broken MPI implementations will make use of MPI 
+	calls rather than PMPI calls (or an internal equivalent).
+	Use this function to convert these calls to the correct
+	corresponding PMPI calls. 
+
+-i	Specify proper binding for the fortran pmpi_init function.
+	Default is pmpi_init_.  See below for details.
+
+-c	Name of mpi compiler (default is mpicc).  
+
+-o	Name of output file
+
+
+Syntax:  
+
+Wrap syntax is a superset of the syntax defined in Appendix C of 
+the MPE manual [1].
+Wrap recognizes the following macros:
+
+{{fileno}} 
+	An integral index representing which wrapper file the macro 
+	came from.  This is useful when decalring file-global variables
+	to prevent name collisions.  Identifiers declared outside 
+	functions should end with _{{fileno}}.  For example:
+
+		static double overhead_time_{{fileno}};
+	
+	might expand to 
+
+		static double overhead_time_0;
+
+
+{{forallfn <function name escape> <function A> <function B> ... }}
+  // code here
+{{endforallfn}
+
+	The code between {{forallfn}} and {{endforallfn}} is copied once
+	for every function profiled, except for the functions listed.
+	For example:
+
+		{{forallfn fn_name}}
+      static int {{fn_name}}_ncalls_{{fileno}};
+		{{endforallfn}}
+
+	might expand to:
+
+		static int MPI_Send_ncalls_1;
+		static int MPI_Recv_ncalls_1;
+		...
+
+	etc.
+
+
+{{foreachfn <function name escape> <function A> <function B> ... }}
+  // code here
+{{endforeachfn}}
+	
+	Identical to {{forallfn}} except that only the listed functions are used.
+
+
+{{fnall <functon name escape> <function A> <function b> ... }}
+  // code here
+{{endfnall}}
+
+	{{fnall}} defines a wrapper to be used on all functions except
+	the functions named.  
+
+
+{{vardecl <type> <arg> <arg> ...}}
+	Declare variables within a wrapper definition.  Wrap will decorate the 
+	variable name to prevent collisions.
+
+
+{{<varname>}}
+	Access a variable declared by {{vardecl}}.
+
+
+{{<argnum>}}
+	Arguments to the function being profiled may also be referenced by 
+	number, starting with 0 and increasing.
+
+{{returnVal}}
+	ReturnVal expands to the variable that is used to hold the return
+	value of the function being profiled.
+
+{{callfn}}
+	callfn expands to the call of the function being profiled.
+
+{{fn <function name escape> <function A> <function B> ... }}
+	fn is identical to fnall except that it only generates wrappers for
+	functions named explicitly.
+
+{{fn_num}}
+	This is a number, starting from zero.  It is incremented every time
+	it is used.
+
+{{retType}} 
+	The return type of the function.
+
+{{argTypeList}} 
+	Essentially what would be in a formal declaration for the function.
+	Can be used this with forallfn and foreachfn; these don't generate 
+	prototypes, they just iterate over the functions without making a skeleton.
+
+{{argList}} 
+	What you'd put in a delegating call: just the names of the args.
+
+
+Notes on the fortran wrappers:
+
+	#if (!defined(MPICH_HAS_C2F) && defined(MPICH_NAME) && (MPICH_NAME == 1)) /* MPICH test */
+	    return_val = MPI_Abort((MPI_Comm)(*arg_0), *arg_1);
+	#else /* MPI-2 safe call */
+	    return_val = MPI_Abort(MPI_Comm_f2c(*arg_0), *arg_1);
+	#endif /* MPICH test */
+
+This is the part of the wrapper that delegates from Fortran
+to C.  There are two ways to do that.  The MPI-2 way is to
+call the appropriate _f2c call on the handle and pass that
+to the C function.  The f2c/c2f calls are also available in
+some versions of MPICH1, but not all of them (I believe they
+were backported), so you can do the MPI-2 thing if
+MPICH_HAS_C2F is defined.
+
+If c2f functions are not around, then the script tries to
+figure out if it's dealing with MPICH1, where all the
+handles are ints.  In that case, you can just pass the int
+through.
+
+Right now, if it's not *specifically* MPICH1, wrap.py does
+the MPI-2 thing.  From what Barry was telling me, your MPI
+environment might have int handles, but it is not MPICH1.
+So you could either define all the MPI_Foo_c2f/MPI_Foo_f2c
+calls to identity macros, e.g.:
+
+	#define MPI_File_c2f(x) (x)
+	#define MPI_File_f2c(x) (x)
+
+or you could add something to wrap.py to force the
+int-passing behavior.  I'm not sure if you have to care
+about this, but I thought I'd point it out.
+
+
+
+
+[1]  Anthony Chan, William Gropp and Weing Lusk.  User's Guide for MPE:  
+Extensions for MPI Programs.  ANL/MCS-TM-ANL-98/xx.  
+ftp://ftp.mcs.anl.gov/pub/mpi/mpeman.pdf
+
+
