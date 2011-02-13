@@ -147,6 +147,14 @@ mpi_array_calls = {
 }
 
 
+def isindex(str):
+    """True if a string is something we can index an array with."""
+    try:
+        int(str)
+        return True
+    except ValueError:
+        return False
+
 def write_fortran_init_flag():
     output.write("static int fortran_init = 0;\n")
 
@@ -353,6 +361,9 @@ class Declaration:
 
     def argNames(self):
         return [arg.name for arg in self.argsNoEllipsis()]
+
+    def getArgName(self, index):
+        return self.argsNoEllipsis()[index].name
 
     def fortranArgTypeList(self):
         formals = map(Param.fortranFormal, self.argsNoEllipsis())
@@ -705,11 +716,13 @@ class Scope:
         self["argList"]     = decl.argList()
         self.function_name  = decl.name
 
-        argnum = 0
-        for arg in decl.argNames():
-            self["%d" % argnum] = arg
-            argnum += 1
+        def get_arg(out, scope, args, children):
+            try:
+                out.write(decl.getArgName(int(args[0])))
+            except (ValueError, IndexError):
+                syntax_error("Invalid argument index: " + args[0] + " for " + decl.name)
 
+        self["get_arg"] = get_arg
 
 def macro(fun):
     """Put a function in the macro table if it's annotated as a macro."""
@@ -894,6 +907,9 @@ def parse(tokens, macros, end_macro=None):
             name = args.pop(0)
             if name == end_macro:
                 break
+            elif isindex(name):    # Special case for arg numbers -- these call get_arg
+                chunk.macro = "get_arg"
+                chunk.args = [name]
             else:
                 chunk.macro = name
                 chunk.args  = args

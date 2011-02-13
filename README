@@ -97,9 +97,21 @@ static variable per MPI call for some flag.
 
 	etc.
 
+{{get_arg <argnum>}}  OR
 {{<argnum>}}
-	Arguments to the function being profiled may also be referenced by 
-	number, starting with 0 and increasing.
+	Arguments to the function being profiled may be referenced by 
+	number, starting with 0 and increasing.  e.g., in a wrapper file:
+  
+  void process_argc_and_argv(int *argc, char ***argv) {
+    // do stuff to argc and argv.
+  }
+
+  {{fn fn_name MPI_Init}}
+    process_argc_and_argv({{0}}, {{1}});
+    {{callfn}}
+  {{endfn}}
+
+  Note that {{0}} is just a synonym for {{get_arg 0}}
 
 {{returnVal}}
 	ReturnVal expands to the variable that is used to hold the return
@@ -137,6 +149,7 @@ Additional macros:
 		static double overhead_time_0;
 
 
+NOTE: {{vardecl}} is not yet supported.
 {{vardecl <type> <arg> <arg> ...}}
 	Declare variables within a wrapper definition.  Wrap will decorate the 
 	variable name to prevent collisions.
