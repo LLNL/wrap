@@ -351,17 +351,19 @@ class Declaration:
     def argsNoEllipsis(self):
         return filter(lambda arg: arg.name != "...", self.args)
 
+    def argNames(self):
+        return [arg.name for arg in self.argsNoEllipsis()]
+
     def fortranArgTypeList(self):
         formals = map(Param.fortranFormal, self.argsNoEllipsis())
         if self.name == "MPI_Init": formals = []
         return "(%s)" % ", ".join(formals + ["MPI_Fint *ierr"])
 
     def argList(self):
-        names = [arg.name for arg in self.argsNoEllipsis()]
-        return "(%s)" % ", ".join(names)
+        return "(%s)" % ", ".join(self.argNames())
 
     def fortranArgList(self):
-        names = [arg.name for arg in self.argsNoEllipsis()]
+        names = self.argNames()
         if self.name == "MPI_Init": names = []
         return "(%s)" % ", ".join(names + ["ierr"])
 
@@ -670,6 +672,8 @@ class Scope:
     def __init__(self, enclosing_scope=None):
         self.map = {}
         self.enclosing_scope = enclosing_scope
+        # Keep track of this for better debugging error messages
+        self.function_name = None
 
     def __getitem__(self, key):
         if key in self.map:
@@ -699,6 +703,12 @@ class Scope:
         self["retType"]     = decl.retType()
         self["argTypeList"] = decl.argTypeList()
         self["argList"]     = decl.argList()
+        self.function_name  = decl.name
+
+        argnum = 0
+        for arg in decl.argNames():
+            self["%d" % argnum] = arg
+            argnum += 1
 
 
 def macro(fun):
@@ -720,13 +730,15 @@ def foreachfn(out, scope, args, children):
     fn_var = args[0]
     for fn_name in args[1:]:
         if not fn_name in mpi_functions:
-            raise SyntaxError(fn_name + " is not an MPI function")
+            syntax_error(fn_name + " is not an MPI function")
 
         fn = mpi_functions[fn_name]
-        scope[fn_var] = fn_name
-        scope.include_decl(fn)
+        fn_scope = Scope(scope)
+        fn_scope[fn_var] = fn_name
+        fn_scope.include_decl(fn)
+
         for child in children:
-            child.execute(out, scope)
+            child.execute(out, fn_scope)
 
 @macro
 def fn(out, scope, args, children):
@@ -736,14 +748,15 @@ def fn(out, scope, args, children):
     fn_var = args[0]
     for fn_name in args[1:]:
         if not fn_name in mpi_functions:
-            raise SyntaxError(fn_name + " is not an MPI function")
+            syntax_error(fn_name + " is not an MPI function")
 
         fn = mpi_functions[fn_name]
         return_val = "_wrap_py_return_val"
 
-        scope[fn_var] = fn_name
-        scope.include_decl(fn)
-        scope["returnVal"] = return_val
+        fn_scope = Scope(scope)
+        fn_scope[fn_var] = fn_name
+        fn_scope.include_decl(fn)
+        fn_scope["returnVal"] = return_val
 
         c_call = "%s = P%s%s;" % (return_val, fn.name, fn.argList())
         if fn_name == "MPI_Init" and output_fortran_wrappers:
@@ -774,15 +787,15 @@ def fn(out, scope, args, children):
                 out.write("        %s\n" % c_call)
                 out.write("    }\n")
 
-            scope["callfn"] = callfn
+            fn_scope["callfn"] = callfn
             once(write_fortran_init_flag)
 
         else:
-            scope["callfn"] = c_call
+            fn_scope["callfn"] = c_call
             
         def write_body(out):
             for child in children:
-                child.execute(out, scope)
+                child.execute(out, fn_scope)
 
         out.write("/* ================== C Wrappers for %s ================== */\n" % fn_name)
         write_c_wrapper(out, fn, return_val, write_body)
@@ -846,15 +859,18 @@ class Chunk:
             out.write(self.text)
         else:
             if not self.macro in scope:
-                raise SyntaxError("Invalid macro: " + self.macro)
+                error_msg = "Invalid macro: '" + self.macro + "'"
+                if scope.function_name:
+                    error_msg += " for " + scope.function_name
+                syntax_error(error_msg)
 
             macro = scope[self.macro]
             if isinstance(macro, str):
                 # raw strings in the scope will just get printed out.
                 out.write(macro)
             else:
-                # macros get executed inside a new scope 
-                macro(out, Scope(scope), self.args, self.children)
+                # Parents of child macros must create new scopes.
+                macro(out, scope, self.args, self.children)
         
 
 def parse(tokens, macros, end_macro=None):
@@ -872,7 +888,7 @@ def parse(tokens, macros, end_macro=None):
         elif token.isa(LBRACE):
             text, close = tokens.next(), tokens.next()
             if not text.isa(TEXT) or not close.isa(RBRACE):
-                raise SyntaxError("Expected macro body after open brace.")
+                syntax_error("Expected macro body after open brace.")
 
             args = text.value.split()
             name = args.pop(0)
@@ -884,7 +900,7 @@ def parse(tokens, macros, end_macro=None):
                 if name in macros:
                     chunk.children = parse(tokens, macros, "end" + name)
         else:
-            raise SyntaxError("Expected text block or macro.")
+            syntax_error("Expected text block or macro.")
 
         chunk_list.append(chunk)
 
@@ -963,7 +979,7 @@ for f in args:
 
     chunks = parse(lexer.lex(file), macros)
     for chunk in chunks:
-        chunk.execute(output, outer_scope)
+        chunk.execute(output, Scope(outer_scope))
 
     fileno += 1
 
