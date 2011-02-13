@@ -58,7 +58,6 @@ named functions.
 		_EXTERN_C_ int PMPI_Abort(MPI_Comm arg_0, int arg_1);
 		_EXTERN_C_ int MPI_Abort(MPI_Comm arg_0, int arg_1) { 
 		    int return_val = 0;
-		    return_val = PMPI_Abort(arg_0, arg_1);
 
 		// Do-nothing wrapper for MPI_Abort
 		    return return_val;
@@ -77,7 +76,7 @@ static variable per MPI call for some flag.
   // code here
 {{endforallfn}
 
-{{foreachfn <function name escape> <function A> <function B> ... }}
+{foreachfn <iterator variable name> <function A> <function B> ... }}
   // code here
 {{endforeachfn}}
 	
