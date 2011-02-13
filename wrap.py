@@ -547,7 +547,7 @@ class FortranDelegation:
         mpich_call = "%s(%s);\n" % (call, ", ".join(self.mpich_actuals))
         mpi2_call = "%s(%s);\n" % (call, ", ".join(self.actuals))
 
-        out.write("    int return_val = 0;\n")
+        out.write("    int %s = 0;\n" % self.return_val)
         if mpich_call == mpi2_call and not (self.temps or self.copies or self.writebacks):
             out.write(mpich_call)
         else:
@@ -739,11 +739,11 @@ def fn(out, scope, args, children):
             raise SyntaxError(fn_name + " is not an MPI function")
 
         fn = mpi_functions[fn_name]
-        return_val = "return_val"
+        return_val = "_wrap_py_return_val"
 
         scope[fn_var] = fn_name
         scope.include_decl(fn)
-        scope["return_val"] = return_val
+        scope["returnVal"] = return_val
 
         c_call = "%s = P%s%s;" % (return_val, fn.name, fn.argList())
         if fn_name == "MPI_Init" and output_fortran_wrappers:
@@ -759,16 +759,16 @@ def fn(out, scope, args, children):
                 out.write("            exit(1);\n")
                 out.write("        }")
                 out.write("        switch (fortran_init) {\n")
-                out.write("        case 1: PMPI_INIT(&return_val); break;\n")
-                out.write("        case 2: pmpi_init(&return_val); break;\n")
-                out.write("        case 3: pmpi_init_(&return_val); break;\n")
-                out.write("        case 4: pmpi_init__(&return_val); break;\n")
+                out.write("        case 1: PMPI_INIT(&%s);   break;\n" % return_val)
+                out.write("        case 2: pmpi_init(&%s);   break;\n" % return_val)
+                out.write("        case 3: pmpi_init_(&%s);  break;\n" % return_val)
+                out.write("        case 4: pmpi_init__(&%s); break;\n" % return_val)
                 out.write("        default:\n")
                 out.write("            fprintf(stderr, \"NO SUITABLE FORTRAN MPI_INIT BINDING\\n\");\n")
                 out.write("            break;\n")
                 out.write("        }\n")
                 out.write("#else /* !PIC */\n")
-                out.write("        %s(&return_val);\n" % pmpi_init_binding)
+                out.write("        %s(&%s);\n" % (pmpi_init_binding, return_val))
                 out.write("#endif /* !PIC */\n")
                 out.write("    } else {\n")
                 out.write("        %s\n" % c_call)
