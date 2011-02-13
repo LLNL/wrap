@@ -76,7 +76,7 @@ static variable per MPI call for some flag.
   // code here
 {{endforallfn}
 
-{{foreachfn <function name escape> <function A> <function B> ... }}
+{foreachfn <iterator variable name> <function A> <function B> ... }}
   // code here
 {{endforeachfn}}
 	
