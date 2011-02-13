@@ -483,11 +483,7 @@ def write_c_wrapper(out, decl, return_val, write_body):
     out.write(" { \n")
     out.write("    int %s = 0;\n" % return_val)
 
-    if output_guards:
-        write_enter_guard(out, decl)
-    else:
-        out.write("    return_val = P%s%s;\n" % (decl.name, decl.argList()))
-
+    write_enter_guard(out, decl)
     write_body(out)
     write_exit_guard(out)
 
