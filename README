@@ -25,24 +25,62 @@ Syntax:
 
 Wrap syntax is a superset of the syntax defined in Appendix C of 
 the MPE manual [1].
-Wrap recognizes the following macros:
-
-{{fileno}} 
-	An integral index representing which wrapper file the macro 
-	came from.  This is useful when decalring file-global variables
-	to prevent name collisions.  Identifiers declared outside 
-	functions should end with _{{fileno}}.  For example:
-
-		static double overhead_time_{{fileno}};
-	
-	might expand to 
-
-		static double overhead_time_0;
 
 
-{{forallfn <function name escape> <function A> <function B> ... }}
+
+The following two macros generate skeleton wrappers and allow
+delegation via {{callfn}}.  fn iterates over only the listed
+functions.  fnall iterates over all functions *minus* the
+named functions.
+
+{{fnall <iterator variable name> <function A> <function b> ... }}
+  // code here
+{{endfnall}}
+
+{{fn <iterator variable name> <function A> <function B> ... }}
+{{endfn}
+
+{{callfn}}
+	callfn expands to the call of the function being profiled.
+
+
+	{{fnall}} defines a wrapper to be used on all functions except
+	the functions named.  fn is identical to fnall except that it 
+	only generates wrappers for functions named explicitly.
+
+		{{fn FOO MPI_Abort}}
+		// Do-nothing wrapper for {{FOO}}
+		{{endfn}} 
+
+	generates (in part)
+
+		/* ================== C Wrappers for MPI_Abort ================== */
+		_EXTERN_C_ int PMPI_Abort(MPI_Comm arg_0, int arg_1);
+		_EXTERN_C_ int MPI_Abort(MPI_Comm arg_0, int arg_1) { 
+		    int return_val = 0;
+		    return_val = PMPI_Abort(arg_0, arg_1);
+
+		// Do-nothing wrapper for MPI_Abort
+		    return return_val;
+		}
+
+
+foreachfn and forallfn are the counterparts of fn and fnall, but they don't generate the
+skeletons (and therefore you can't delegate with {{callfn}}).  However, you
+can use things like fn_name (or foo) and argTypeList, retType, argList, etc.
+
+They're not designed for making wrappers, but declarations of lots of variables
+and other things you need to declare per MPI function.  e.g., say you wanted a
+static variable per MPI call for some flag. 
+
+{{forallfn <iterator variable name> <function A> <function B> ... }}
   // code here
 {{endforallfn}
+
+{{foreachfn <function name escape> <function A> <function B> ... }}
+  // code here
+{{endforeachfn}}
+	
 
 	The code between {{forallfn}} and {{endforallfn}} is copied once
 	for every function profiled, except for the functions listed.
@@ -60,31 +98,6 @@ Wrap recognizes the following macros:
 
 	etc.
 
-
-{{foreachfn <function name escape> <function A> <function B> ... }}
-  // code here
-{{endforeachfn}}
-	
-	Identical to {{forallfn}} except that only the listed functions are used.
-
-
-{{fnall <functon name escape> <function A> <function b> ... }}
-  // code here
-{{endfnall}}
-
-	{{fnall}} defines a wrapper to be used on all functions except
-	the functions named.  
-
-
-{{vardecl <type> <arg> <arg> ...}}
-	Declare variables within a wrapper definition.  Wrap will decorate the 
-	variable name to prevent collisions.
-
-
-{{<varname>}}
-	Access a variable declared by {{vardecl}}.
-
-
 {{<argnum>}}
 	Arguments to the function being profiled may also be referenced by 
 	number, starting with 0 and increasing.
@@ -92,13 +105,6 @@ Wrap recognizes the following macros:
 {{returnVal}}
 	ReturnVal expands to the variable that is used to hold the return
 	value of the function being profiled.
-
-{{callfn}}
-	callfn expands to the call of the function being profiled.
-
-{{fn <function name escape> <function A> <function B> ... }}
-	fn is identical to fnall except that it only generates wrappers for
-	functions named explicitly.
 
 {{fn_num}}
 	This is a number, starting from zero.  It is incremented every time
@@ -114,6 +120,31 @@ Wrap recognizes the following macros:
 
 {{argList}} 
 	What you'd put in a delegating call: just the names of the args.
+
+
+Additional macros:
+
+
+{{fileno}} 
+	An integral index representing which wrapper file the macro 
+	came from.  This is useful when decalring file-global variables
+	to prevent name collisions.  Identifiers declared outside 
+	functions should end with _{{fileno}}.  For example:
+
+		static double overhead_time_{{fileno}};
+	
+	might expand to 
+
+		static double overhead_time_0;
+
+
+{{vardecl <type> <arg> <arg> ...}}
+	Declare variables within a wrapper definition.  Wrap will decorate the 
+	variable name to prevent collisions.
+
+
+{{<varname>}}
+	Access a variable declared by {{vardecl}}.
 
 
 Notes on the fortran wrappers:
