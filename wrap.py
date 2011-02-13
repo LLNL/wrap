@@ -803,6 +803,13 @@ def fnall(out, scope, args, children):
     args or syntax_error("Error: fnall requires function name argument.")
     fn(out, scope, [args[0]] + all_but(args[1:]), children)
 
+# TODO: Come up with a consistent decorator scheme for body-less macros.
+#       Currently only macros with bodies use @macro and we have to put this
+#       explicitly in the outer scope below.
+def fn_num(out, scope, args, children):
+    out.write("%d" % fn_num.val)
+    fn_num.val += 1
+fn_num.val = 0
 
 class Chunk:
     """Represents a piece of a wrapper file.  Is either a text chunk
@@ -951,6 +958,7 @@ for f in args:
     # Outer scope contains fileno and the basic macros.
     outer_scope = Scope()
     outer_scope["fileno"] = str(fileno)
+    outer_scope["fn_num"] = fn_num
     outer_scope.include(macros)
 
     chunks = parse(lexer.lex(file), macros)
