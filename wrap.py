@@ -359,6 +359,12 @@ class Declaration:
     def argsNoEllipsis(self):
         return filter(lambda arg: arg.name != "...", self.args)
 
+    def returnsErrorCode(self):
+        """This is a special case for MPI_Wtime and MPI_Wtick.
+           These functions actually return a double value instead of an int error code.
+        """
+        return self.rtype == "int"
+
     def argNames(self):
         return [arg.name for arg in self.argsNoEllipsis()]
 
@@ -367,8 +373,12 @@ class Declaration:
 
     def fortranArgTypeList(self):
         formals = map(Param.fortranFormal, self.argsNoEllipsis())
-        if self.name == "MPI_Init": formals = []
-        return "(%s)" % ", ".join(formals + ["MPI_Fint *ierr"])
+        if self.name == "MPI_Init": formals = []    # Special case for init: no args in fortran
+
+        ierr = []
+        if self.returnsErrorCode(): ierr = ["MPI_Fint *ierr"]
+
+        return "(%s)" % ", ".join(formals + ierr)
 
     def argList(self):
         return "(%s)" % ", ".join(self.argNames())
@@ -376,7 +386,11 @@ class Declaration:
     def fortranArgList(self):
         names = self.argNames()
         if self.name == "MPI_Init": names = []
-        return "(%s)" % ", ".join(names + ["ierr"])
+
+        ierr = []
+        if self.returnsErrorCode(): ierr = ["ierr"]
+
+        return "(%s)" % ", ".join(names + ierr)
 
     def prototype(self, modifiers=""):
         if modifiers: modifiers = joinlines(modifiers, " ")
@@ -389,7 +403,12 @@ class Declaration:
     def fortranPrototype(self, name=None, modifiers=""):
         if not name: name = self.name
         if modifiers: modifiers = joinlines(modifiers, " ")
-        return "%svoid %s%s" % (modifiers, name, self.fortranArgTypeList())
+
+        if self.returnsErrorCode():
+            rtype = "void"  # Fortran calls use ierr parameter instead
+        else:
+            rtype = self.rtype
+        return "%s%s %s%s" % (modifiers, rtype, name, self.fortranArgTypeList())
     
 
 types = set()
@@ -494,7 +513,7 @@ def write_c_wrapper(out, decl, return_val, write_body):
     # Now write the wrapper function, which will call the PMPI function we declared.
     out.write(decl.prototype(default_modifiers))
     out.write(" { \n")
-    out.write("    int %s = 0;\n" % return_val)
+    out.write("    %s %s = 0;\n" % (decl.retType(), return_val))
 
     write_enter_guard(out, decl)
     write_body(out)
@@ -513,7 +532,12 @@ def write_fortran_binding(out, decl, delegate_name, binding, stmts=None):
     out.write(" { \n")
     if stmts:
         out.write(joinlines(map(lambda s: "    " + s, stmts)))
-    out.write("    %s%s;\n" % (delegate_name, decl.fortranArgList()))
+    if decl.returnsErrorCode():
+        # regular MPI fortran functions use an error code
+        out.write("    %s%s;\n" % (delegate_name, decl.fortranArgList()))
+    else:
+        # wtick and wtime return a value
+        out.write("    return %s%s;\n" % (delegate_name, decl.fortranArgList()))
     out.write("}\n\n")
     
 
@@ -522,8 +546,8 @@ class FortranDelegation:
        storage for local temporary variables, copies of parameters, callsites for MPI-1 and
        MPI-2, and writebacks to local pointer types.
     """
-    def __init__(self, fn_name, return_val):
-        self.fn_name = fn_name
+    def __init__(self, decl, return_val):
+        self.decl = decl
         self.return_val = return_val
 
         self.temps = set()
@@ -556,11 +580,11 @@ class FortranDelegation:
     def write(self, out):
         assert len(self.actuals) == len(self.mpich_actuals)
         
-        call = "    %s = %s" % (self.return_val, self.fn_name)
+        call = "    %s = %s" % (self.return_val, self.decl.name)
         mpich_call = "%s(%s);\n" % (call, ", ".join(self.mpich_actuals))
         mpi2_call = "%s(%s);\n" % (call, ", ".join(self.actuals))
 
-        out.write("    int %s = 0;\n" % self.return_val)
+        out.write("    %s %s = 0;\n" % (self.decl.retType(), self.return_val))
         if mpich_call == mpi2_call and not (self.temps or self.copies or self.writebacks):
             out.write(mpich_call)
         else:
@@ -582,7 +606,7 @@ def write_fortran_wrappers(out, decl, return_val):
     out.write(decl.fortranPrototype(delegate_name, ["static"]))
     out.write(" { \n")
 
-    call = FortranDelegation(decl.name, return_val)
+    call = FortranDelegation(decl, return_val)
     
     if decl.name == "MPI_Init":
         # Use out.write() here so it comes at very beginning of wrapper function
@@ -665,7 +689,10 @@ def write_fortran_wrappers(out, decl, return_val):
                     call.addWriteback("free(%s);" % temp)
 
     call.write(out)
-    out.write("    *ierr = %s;\n" % return_val)
+    if decl.returnsErrorCode():
+        out.write("    *ierr = %s;\n" % return_val)
+    else:
+        out.write("    return %s;\n" % return_val)
     out.write("}\n\n")
 
     # Write out various bindings that delegate to the main fortran wrapper
