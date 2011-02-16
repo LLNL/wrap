@@ -138,7 +138,7 @@ static variable per MPI call for some flag.
   to any arguments of the function with type <type>.
   
   For example, you might write a wrapper file like this:
-    #define my_macro(comm) { do_something_to(comm); }
+    #define my_macro(comm) do_something_to(comm);
 
     {{fn fn_name MPI_Send MPI_Isend MPI_Ibsend}}
         {{applyToType MPI_Comm my_macro}}
