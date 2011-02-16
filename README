@@ -132,9 +132,26 @@ static variable per MPI call for some flag.
 {{argList}} 
 	What you'd put in a delegating call: just the names of the args.
 
+{{applyToType <type> <callable>}}
+  This macro must be nested inside either a fn or fnall block.
+  Within the functions being wrapped by fn or fnall, this macro will apply <callable>
+  to any arguments of the function with type <type>.
+  
+  For example, you might write a wrapper file like this:
+    #define my_macro(comm) { do_something_to(comm); }
 
-Additional macros:
+    {{fn fn_name MPI_Send MPI_Isend MPI_Ibsend}}
+        {{applyToType MPI_Comm my_macro}}
+        {{callfn}}
+    {{endfn}}
+  
+  Now the generated wrappers to MPI_Send, MPI_Isend, and MPI_Ibsend will do something like this:
 
+    int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request) { 
+      int _wrap_py_return_val = 0;
+      my_macro(comm);
+      PMPI_Isend(buf, count, datatype, dest, tag, comm, request);
+    }
 
 {{fileno}} 
 	An integral index representing which wrapper file the macro 

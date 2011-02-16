@@ -331,6 +331,21 @@ class Param:
         return self.cFormal()
 
 
+class TypeApplier:
+    """This class implements a Macro function for applying something callable to args in a decl
+       with particular types.
+    """
+    def __init__(self, decl):
+        self.decl = decl
+
+    def __call__(self, out, scope, args, children):
+        if len(args) != 2:
+            syntax_error("Wrong number of args in apply macro.")
+        type, macro_name = args
+        for arg in self.decl.args:
+            if arg.type == type:
+                out.write("%s(%s);\n" % (macro_name, arg.name))
+
 class Declaration:
     """ Descriptor for simple MPI function declarations.  
         Contains return type, name of function, and a list of args.
@@ -750,6 +765,7 @@ class Scope:
                 syntax_error("Invalid argument index: " + args[0] + " for " + decl.name)
 
         self["get_arg"] = get_arg
+        self["applyToType"] = TypeApplier(decl)
 
 def macro(fun):
     """Put a function in the macro table if it's annotated as a macro."""
