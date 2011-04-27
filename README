@@ -10,6 +10,7 @@ Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
    -f             Generate fortran wrappers in addition to C wrappers.
    -g             Generate reentry guards around wrapper functions.
    -c exe         Provide name of MPI compiler (for parsing mpi.h).  Default is \'mpicc\'.
+   -s             Skip writing #includes, #defines, and other front-matter (for non-C output).
    -i pmpi_init   Specify proper binding for the fortran pmpi_init function.
                   Default is \'pmpi_init_\'.  Wrappers compiled for PIC will guess the
                   right binding automatically (use -DPIC when you compile dynamic libs).
