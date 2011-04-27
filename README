@@ -2,30 +2,29 @@ wrap:  a PMPI wrapper generator.
 
 https://github.com/tgamblin/wrap
 
-Use:  wrap.py [-dfg] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
+Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
+ Python script for creating PMPI wrappers. Roughly follows the syntax of 
+   the Argonne PMPI wrapper generator, with some enhancements.
+ Options:"
+   -d             Just dump function declarations parsed out of mpi.h
+   -f             Generate fortran wrappers in addition to C wrappers.
+   -g             Generate reentry guards around wrapper functions.
+   -c exe         Provide name of MPI compiler (for parsing mpi.h).  Default is \'mpicc\'.
+   -i pmpi_init   Specify proper binding for the fortran pmpi_init function.
+                  Default is \'pmpi_init_\'.  Wrappers compiled for PIC will guess the
+                  right binding automatically (use -DPIC when you compile dynamic libs).
+   -o file        Send output to a file instead of stdout.
+   
+ by Todd Gamblin, tgamblin@llnl.gov
 
--d	dump MPI function declarations parsed out of mpi.h 
--f	Generate fortran wrappers in addition to C wrappers.  
-	See below for details.
--g      Generate reentry guards around wrapper functions.
-	Some broken MPI implementations will make use of MPI 
-	calls rather than PMPI calls (or an internal equivalent).
-	Use this function to convert these calls to the correct
-	corresponding PMPI calls. 
-
--i	Specify proper binding for the fortran pmpi_init function.
-	Default is pmpi_init_.  See below for details.
-
--c	Name of mpi compiler (default is mpicc).  
-
--o	Name of output file
+Thanks to these people for their suggestions and contributions:
+  David Lecomber, Allinea               Barry Rountree, LLNL
 
 
-Syntax:  
+Wrapper file syntax:  
 
 Wrap syntax is a superset of the syntax defined in Appendix C of 
 the MPE manual [1].
-
 
 
 The following two macros generate skeleton wrappers and allow
@@ -129,8 +128,13 @@ static variable per MPI call for some flag.
 	Can be used this with forallfn and foreachfn; these don't generate 
 	prototypes, they just iterate over the functions without making a skeleton.
 
+{{args}} 
+	Names of the arguments in a comma-separated list, e.g.:
+  buf, type, count, comm
+
 {{argList}} 
-	What you'd put in a delegating call: just the names of the args.
+	Same as {{args}}, but with parentheses around the list, e.g.:
+  (buf, type, count, comm)
 
 {{applyToType <type> <callable>}}
   This macro must be nested inside either a fn or fnall block.
@@ -211,6 +215,27 @@ int-passing behavior.  I'm not sure if you have to care
 about this, but I thought I'd point it out.
 
 
+Notes on -s, or 'structural' mode:
+
+If you use the -s option, this skips the includes and defines used for C
+wrapper functions.  This is useful if you want to use wrap to generate
+non-C files, such as XML.
+
+If you use -s, we recommend that you avoid using {{fn}} and {{fnall}},
+as these generate proper wrapper functions that rely on some of the
+header information.  Instead, use {{foreachfn}} and {{forallfn}}, as these
+do not generate wrappers around each iteration of the macro.
+
+e.g. if you want to generate a simple XML file with descriptions of the
+MPI arguments, you might write this in a wrapper file:
+
+  {{forallfn fun}}
+      <function name="{{fun}}" args="{{args}}"/>
+  {{endforallfn}}
+
+We don't disallow {{fnall}} or {{fn}} with -s, but If you used {{fnall}}
+here, each XML tag would have a C wrapper function around it, which is
+probably NOT what you want.
 
 
 [1]  Anthony Chan, William Gropp and Weing Lusk.  User's Guide for MPE:  

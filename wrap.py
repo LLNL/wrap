@@ -38,6 +38,7 @@ usage_string = \
    -d             Just dump function declarations parsed out of mpi.h
    -f             Generate fortran wrappers in addition to C wrappers.
    -g             Generate reentry guards around wrapper functions.
+   -s             Skip writing #includes, #defines, and other front-matter (for non-C output).
    -c exe         Provide name of MPI compiler (for parsing mpi.h).  Default is \'mpicc\'.
    -i pmpi_init   Specify proper binding for the fortran pmpi_init function.
                   Default is \'pmpi_init_\'.  Wrappers compiled for PIC will guess the
@@ -54,6 +55,7 @@ mpicc = 'mpicc'                    # Default name for the MPI compiler
 pmpi_init_binding = "pmpi_init_"   # Default binding for pmpi_init
 output_fortran_wrappers = False    # Don't print fortran wrappers by default
 output_guards = False              # Don't print reentry guards by default
+skip_headers = False               # Skip header information and defines (for non-C output)
 dump_prototypes = False            # Just exit and dump MPI protos if false.
 
 # Possible legal bindings for the fortran version of PMPI_Init()
@@ -395,8 +397,11 @@ class Declaration:
 
         return "(%s)" % ", ".join(formals + ierr)
 
+    def argListNoParens(self):
+        return "%s" % ", ".join(self.argNames())
+
     def argList(self):
-        return "(%s)" % ", ".join(self.argNames())
+        return "(%s)" % self.argListNoParens()
 
     def fortranArgList(self):
         names = self.argNames()
@@ -754,8 +759,9 @@ class Scope:
 
     def include_decl(self, decl):
         self["retType"]     = decl.retType()
-        self["argTypeList"] = decl.argTypeList()
+        self["args"]        = decl.argListNoParens()
         self["argList"]     = decl.argList()
+        self["argTypeList"] = decl.argTypeList()
         self.function_name  = decl.name
 
         def get_arg(out, scope, args, children):
@@ -973,7 +979,7 @@ def usage():
 # Let the user specify another mpicc to get mpi.h from
 output = sys.stdout
 try:
-    opts, args = getopt.gnu_getopt(sys.argv[1:], "fgdc:o:i:")
+    opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdc:o:i:")
 except getopt.GetoptError, err:
     print err
     usage()
@@ -983,6 +989,8 @@ for opt, arg in opts:
         dump_prototypes = True
     if opt == "-f": 
         output_fortran_wrappers = True
+    if opt == "-s": 
+        skip_headers = True
     if opt == "-g": 
         output_guards = True
     if opt == "-c": 
@@ -1016,10 +1024,10 @@ if dump_prototypes:
     sys.exit(0)
 
 # Start with some headers and definitions.
-output.write(wrapper_includes)
-
-if output_guards:
-    output.write("static int in_wrapper = 0;\n")
+if not skip_headers:
+    output.write(wrapper_includes)
+    if output_guards:
+        output.write("static int in_wrapper = 0;\n")
 
 #
 # Parse each file listed on the command line and execute
