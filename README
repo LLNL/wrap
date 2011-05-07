@@ -158,6 +158,22 @@ static variable per MPI call for some flag.
       PMPI_Isend(buf, count, datatype, dest, tag, comm, request);
     }
 
+{{sub <new_string> <old_string> <regexp> <substitution>}}
+  Declares <new_string> in the current scope and gives it the value of <old_string>
+  with all instances of <regexp> replaced with <substitution>.  You may use any
+  valid python regexp for <regexp> and any valid substitution value for <substitution>.
+  The regexps follow the same syntax as Python's re.sub(), and they may be single or
+  double quoted (though it's not necessary unless you use spaces in the expressions).
+
+  Example:
+
+    {{forallfn foo}}
+      {{sub nqjfoo foo '^MPI_' NQJ_}}
+      {{nqjfoo}}
+    {{endforallfn}}
+
+  This will print NQJ_xxx instead of MPI_xxx for each MPI function.
+
 {{fileno}} 
 	An integral index representing which wrapper file the macro 
 	came from.  This is useful when decalring file-global variables

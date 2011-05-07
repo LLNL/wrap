@@ -194,10 +194,10 @@ class Token:
 class Lexer:
     """Lexes a wrapper file and spits out Tokens in order."""
     def __init__(self, lbrace, rbrace):
-        self.lbrace = lbrace
-        self.rbrace = rbrace
-        self.in_tag = False
-        self.text = StringIO.StringIO()
+        self.lbrace  = lbrace
+        self.rbrace  = rbrace
+        self.in_tag  = False
+        self.text    = StringIO.StringIO()
         self.line_no = 0
     
     def lex_line(self, line):
@@ -879,8 +879,22 @@ def fnall(out, scope, args, children):
     fn(out, scope, [args[0]] + all_but(args[1:]), children)
 
 # TODO: Come up with a consistent decorator scheme for body-less macros.
-#       Currently only macros with bodies use @macro and we have to put this
+#       Currently only macros with bodies use @macro and we have to put sub and fn_num
 #       explicitly in the outer scope below.
+def sub(out, scope, args, children):
+    """{{sub <new_string> <old_string> <regexp> <substitution>}}
+       Declares <new_string> in the current scope and gives it the value of <old_string>
+       with all instances of <regexp> replaced with <substitution>.  You may use any
+       valid python regexp for <regexp> and any valid substitution value for <substitution>.
+       The regexps follow the same syntax as Python's re.sub(), and they may be single or
+       double quoted (though it's not necessary unless you use spaces in the expressions).
+    """
+    len(args) == 4 or syntax_error("'sub' macro takes exactly 4 arguments.")
+    new_string, old_string, regex, substitution = args
+    if not old_string in scope:
+        syntax_error("'%s' was not in scope when executing 'sub' macro." % old_string)
+    scope[new_string] = re.sub(regex, substitution, scope[old_string])
+
 def fn_num(out, scope, args, children):
     out.write("%d" % fn_num.val)
     fn_num.val += 1
@@ -941,6 +955,7 @@ def parse(tokens, macros, end_macro=None):
        and the result will be appended as a list of child chunks."""
     chunk_list = []
 
+
     for token in tokens:
         chunk = Chunk()
 
@@ -948,11 +963,22 @@ def parse(tokens, macros, end_macro=None):
             chunk.text = token.value
 
         elif token.isa(LBRACE):
-            text, close = tokens.next(), tokens.next()
+            try:
+                text, close = tokens.next(), tokens.next()
+            except StopIteration:
+                syntax_error("Unterminated macro.")
+
             if not text.isa(TEXT) or not close.isa(RBRACE):
                 syntax_error("Expected macro body after open brace.")
 
-            args = text.value.split()
+            # Split args out of the text between lbrace and rbrace, taking quotes into account.  This
+            # matches either "foo" 'foo' or just plain foo, and it handles escaped \' or \" in strings.
+            args = re.findall(r'(["\'])?(?(1)((?:(?!\1)[^\\]|\\.)*)\1|([^\s]+))', text.value)
+            def nonemptymatch(x):     # Grabs the match from the above that was not ''
+                if x[1] == '': return x[2]
+                else:          return x[1]
+            args = [nonemptymatch(x) for x in args]
+
             name = args.pop(0)
             if name == end_macro:
                 break
@@ -1042,6 +1068,7 @@ for f in args:
     outer_scope = Scope()
     outer_scope["fileno"] = str(fileno)
     outer_scope["fn_num"] = fn_num
+    outer_scope["sub"]    = sub
     outer_scope.include(macros)
 
     chunks = parse(lexer.lex(file), macros)
