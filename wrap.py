@@ -47,7 +47,7 @@ usage_string = \
    
  by Todd Gamblin, tgamblin@llnl.gov
 '''
-import tempfile, getopt, subprocess, sys, re, StringIO
+import tempfile, getopt, subprocess, sys, os, re, StringIO, types
 
 
 # Default values for command-line parameters
@@ -157,15 +157,12 @@ def isindex(str):
     except ValueError:
         return False
 
-def write_fortran_init_flag():
-    output.write("static int fortran_init = 0;\n")
-
 def once(function):
     if not hasattr(function, "did_once"):
         function()
         function.did_once = True
 
-# Returns MPI_Blah_[f2c,c2f] prefix for a handle type
+# Returns MPI_Blah_[f2c,c2f] prefix for a handle type.  MPI_Datatype is a special case.
 def conversion_prefix(handle_type):
     if handle_type == "MPI_Datatype":
         return "MPI_Type"
@@ -241,15 +238,54 @@ lexer = Lexer("{{","}}")
 # Global current filename for error msgs
 filename = ""
 
+class WrapSyntaxError:
+    """Simple Class for syntax errors raised by the wrapper generator (rather than python)"""
+    pass
+
 def syntax_error(msg):
     print "%s:%d: %s" % (filename, lexer.line_no, msg)
-    sys.exit(1)
+    raise WrapSyntaxError
     
+################################################################################
+# MPI Semantics:
+#   Classes in this section describe MPI declarations and types.  These are used
+#   to parse the mpi.h header and to generate wrapper code.
+################################################################################
+class Scope:
+    """ This is the very basic class for scopes in the wrapper generator.  Scopes
+        are hierarchical and support nesting.  They contain string keys mapped
+        to either string values or to macro functions.
+        Scopes also keep track of the particular macro they correspond to (macro_name).
+    """
+    def __init__(self, enclosing_scope=None):
+        self.map = {}
+        self.enclosing_scope = enclosing_scope
+        self.macro_name = None           # For better debugging error messages
+
+    def __getitem__(self, key):
+        if key in self.map:         return self.map[key]
+        elif self.enclosing_scope:  return self.enclosing_scope[key]
+        else:                       raise KeyError(key + " is not in scope.")
+
+    def __contains__(self, key):
+        if key in self.map:         return True
+        elif self.enclosing_scope:  return key in self.enclosing_scope
+        else:                       return False
+
+    def __setitem__(self, key, value):
+        self.map[key] = value
+
+    def include(self, map):
+        """Add entire contents of the map (or scope) to this scope."""
+        self.map.update(map)
+
+################################################################################
+# MPI Semantics:
+#   Classes in this section describe MPI declarations and types.  These are used
+#   to parse the mpi.h header and to generate wrapper code.
+################################################################################
 # Map from function name to declaration created from mpi.h.
 mpi_functions = {}
-
-# Global table of macro functions, keyed by name.
-macros = {}
 
 class Param:
     """Descriptor for formal parameters of MPI functions.  
@@ -332,21 +368,6 @@ class Param:
     def __str__(self):
         return self.cFormal()
 
-
-class TypeApplier:
-    """This class implements a Macro function for applying something callable to args in a decl
-       with particular types.
-    """
-    def __init__(self, decl):
-        self.decl = decl
-
-    def __call__(self, out, scope, args, children):
-        if len(args) != 2:
-            syntax_error("Wrong number of args in apply macro.")
-        type, macro_name = args
-        for arg in self.decl.args:
-            if arg.type == type:
-                out.write("%s(%s);\n" % (macro_name, arg.name))
 
 class Declaration:
     """ Descriptor for simple MPI function declarations.  
@@ -722,61 +743,59 @@ def write_fortran_wrappers(out, decl, return_val):
     write_fortran_binding(out, decl, delegate_name, decl.name.lower() + "__")
 
 
-class Scope:
-    """Maps string keys to either macros or values.
-       Supports nesting: if values are not found in this scope, then 
-       enclosing scopes are searched recursively.
-    """
-    def __init__(self, enclosing_scope=None):
-        self.map = {}
-        self.enclosing_scope = enclosing_scope
-        # Keep track of this for better debugging error messages
-        self.function_name = None
+################################################################################
+# Macros:
+#   - functions annotated as @macro or @bodymacro define the global macros and
+#     basic pieces of the generator.
+#   - include_decl is used to include MPI declarations into function scopes.
+################################################################################
+# Table of global macros
+macros = {}
 
-    def __getitem__(self, key):
-        if key in self.map:
-            return self.map[key]
-        elif self.enclosing_scope:
-            return self.enclosing_scope[key]
-        else:
-            raise KeyError(key + " is not in scope.")
-
-    def __contains__(self, key):
-        if key in self.map:
-            return True
-        elif self.enclosing_scope:
-            return key in self.enclosing_scope
-        else:
-            return False
-
-    def __setitem__(self, key, value):
-        self.map[key] = value
-
-    def include(self, map):
-        """Add entire contents of the map (or scope) to this scope."""
-        for key in map:
-            self.map[key] = map[key]
-
-    def include_decl(self, decl):
-        self["retType"]     = decl.retType()
-        self["args"]        = decl.argListNoParens()
-        self["argList"]     = decl.argList()
-        self["argTypeList"] = decl.argTypeList()
-        self.function_name  = decl.name
-
-        def get_arg(out, scope, args, children):
-            try:
-                out.write(decl.getArgName(int(args[0])))
-            except (ValueError, IndexError):
-                syntax_error("Invalid argument index: " + args[0] + " for " + decl.name)
-
-        self["get_arg"] = get_arg
-        self["applyToType"] = TypeApplier(decl)
-
+# These decorators add macro functions to the outermost function scope.
 def macro(fun):
-    """Put a function in the macro table if it's annotated as a macro."""
+    """@macro: for simple macros that do not have bodies, e.g. {{fn_num}}"""
     macros[fun.__name__] = fun
+    fun.has_body = False
     return fun
+
+def bodymacro(fun):
+    """@bodymacro: for macros that have bodies, e.g. {{macro}} ... {{endmacro}}"""
+    macro(fun)
+    fun.has_body = True
+    return fun
+
+class TypeApplier:
+    """This class implements a Macro function for applying something callable to
+       args in a decl with a particular type.
+    """
+    def __init__(self, decl):
+        self.decl = decl
+
+    def __call__(self, out, scope, args, children):
+        if len(args) != 2:
+            syntax_error("Wrong number of args in apply macro.")
+        type, macro_name = args
+        for arg in self.decl.args:
+            if arg.type == type:
+                out.write("%s(%s);\n" % (macro_name, arg.name))
+
+def include_decl(scope, decl):
+    """This function is used by macros to include attributes MPI declarations in their scope."""
+    scope["retType"]     = decl.retType()
+    scope["args"]        = decl.argListNoParens()
+    scope["argList"]     = decl.argList()
+    scope["argTypeList"] = decl.argTypeList()
+    scope.function_name  = decl.name
+
+    def get_arg(out, scope, args, children):
+        try:
+            out.write(decl.getArgName(int(args[0])))
+        except (ValueError, IndexError):
+            syntax_error("Invalid argument index: " + args[0] + " for " + decl.name)
+
+    scope["get_arg"] = get_arg
+    scope["applyToType"] = TypeApplier(decl)
 
 def all_but(fn_list):
     """Return a list of all mpi functions except those in fn_list"""
@@ -784,7 +803,7 @@ def all_but(fn_list):
     diff = all_mpi - set(fn_list)
     return [x for x in diff]
 
-@macro
+@bodymacro
 def foreachfn(out, scope, args, children):
     """Iterate over all functions listed in args."""
     args or syntax_error("Error: foreachfn requires function name argument.")
@@ -797,12 +816,12 @@ def foreachfn(out, scope, args, children):
         fn = mpi_functions[fn_name]
         fn_scope = Scope(scope)
         fn_scope[fn_var] = fn_name
-        fn_scope.include_decl(fn)
+        include_decl(fn_scope, fn)
 
         for child in children:
             child.execute(out, fn_scope)
 
-@macro
+@bodymacro
 def fn(out, scope, args, children):
     """Iterate over listed functions and generate skeleton too."""
     args or syntax_error("Error: fn requires function name argument.")
@@ -817,7 +836,7 @@ def fn(out, scope, args, children):
 
         fn_scope = Scope(scope)
         fn_scope[fn_var] = fn_name
-        fn_scope.include_decl(fn)
+        include_decl(fn_scope, fn)
         fn_scope["returnVal"] = return_val
 
         c_call = "%s = P%s%s;" % (return_val, fn.name, fn.argList())
@@ -850,6 +869,9 @@ def fn(out, scope, args, children):
                 out.write("    }\n")
 
             fn_scope["callfn"] = callfn
+
+            def write_fortran_init_flag():
+                output.write("static int fortran_init = 0;\n")
             once(write_fortran_init_flag)
 
         else:
@@ -866,21 +888,19 @@ def fn(out, scope, args, children):
             write_fortran_wrappers(out, fn, return_val)
             out.write("/* ================= End Wrappers for %s ================= */\n\n\n" % fn_name)
 
-@macro
+@bodymacro
 def forallfn(out, scope, args, children):
     """Iterate over all but the functions listed in args."""
     args or syntax_error("Error: forallfn requires function name argument.")
     foreachfn(out, scope, [args[0]] + all_but(args[1:]), children)
 
-@macro
+@bodymacro
 def fnall(out, scope, args, children):
     """Iterate over all but listed functions and generate skeleton too."""
     args or syntax_error("Error: fnall requires function name argument.")
     fn(out, scope, [args[0]] + all_but(args[1:]), children)
 
-# TODO: Come up with a consistent decorator scheme for body-less macros.
-#       Currently only macros with bodies use @macro and we have to put sub and fn_num
-#       explicitly in the outer scope below.
+@macro
 def sub(out, scope, args, children):
     """{{sub <new_string> <old_string> <regexp> <substitution>}}
        Declares <new_string> in the current scope and gives it the value of <old_string>
@@ -895,11 +915,18 @@ def sub(out, scope, args, children):
         syntax_error("'%s' was not in scope when executing 'sub' macro." % old_string)
     scope[new_string] = re.sub(regex, substitution, scope[old_string])
 
+@macro
 def fn_num(out, scope, args, children):
     out.write("%d" % fn_num.val)
     fn_num.val += 1
-fn_num.val = 0
+fn_num.val = 0  # init the counter here.
 
+
+################################################################################
+# Parser support:
+#   - Chunk class for bits of parsed text on which macros are executed.
+#   - parse() function uses a Lexer to examine a file.
+################################################################################
 class Chunk:
     """Represents a piece of a wrapper file.  Is either a text chunk
        or a macro chunk with children to which the macro should be applied.
@@ -988,7 +1015,7 @@ def parse(tokens, macros, end_macro=None):
             else:
                 chunk.macro = name
                 chunk.args  = args
-                if name in macros:
+                if name in macros and macros[name].has_body:
                     chunk.children = parse(tokens, macros, "end" + name)
         else:
             syntax_error("Expected text block or macro.")
@@ -997,13 +1024,18 @@ def parse(tokens, macros, end_macro=None):
 
     return chunk_list
 
-
+################################################################################
+# Main script:
+#   Get arguments, set up outer scope, parse files, generator wrappers.
+################################################################################
 def usage():
     print usage_string
     sys.exit(2)
 
 # Let the user specify another mpicc to get mpi.h from
 output = sys.stdout
+output_filename = None
+
 try:
     opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdc:o:i:")
 except getopt.GetoptError, err:
@@ -1029,7 +1061,8 @@ for opt, arg in opts:
             pmpi_init_binding = arg
     if opt == "-o": 
         try:
-            output = open(arg, "w")
+            output_filename = arg
+            output = open(output_filename, "w")
         except IOError:
             sys.stderr.write("Error: couldn't open file " + arg + " for writing.\n")
             sys.exit(1)
@@ -1059,22 +1092,26 @@ if not skip_headers:
 # Parse each file listed on the command line and execute
 # it once it's parsed.
 #
-fileno = 0
-for f in args:
-    filename = f
-    file = open(filename)
+try:
+    fileno = 0
+    for f in args:
+        filename = f
+        file = open(filename)
 
-    # Outer scope contains fileno and the basic macros.
-    outer_scope = Scope()
-    outer_scope["fileno"] = str(fileno)
-    outer_scope["fn_num"] = fn_num
-    outer_scope["sub"]    = sub
-    outer_scope.include(macros)
+        # Outer scope contains fileno and the fundamental macros.
+        outer_scope = Scope()
+        outer_scope["fileno"] = str(fileno)
+        outer_scope.include(macros)
 
-    chunks = parse(lexer.lex(file), macros)
-    for chunk in chunks:
-        chunk.execute(output, Scope(outer_scope))
+        chunks = parse(lexer.lex(file), macros)
+        for chunk in chunks:
+            chunk.execute(output, Scope(outer_scope))
 
-    fileno += 1
+        fileno += 1
+except WrapSyntaxError:
+    output.close()
+    if output_filename:
+        os.remove(output_filename)
+    sys.exit(1)
 
 output.close()
