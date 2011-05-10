@@ -47,8 +47,7 @@ usage_string = \
    
  by Todd Gamblin, tgamblin@llnl.gov
 '''
-import tempfile, getopt, subprocess, sys, os, re, StringIO, types
-
+import tempfile, getopt, subprocess, sys, os, re, StringIO, types, itertools
 
 # Default values for command-line parameters
 mpicc = 'mpicc'                    # Default name for the MPI compiler
@@ -177,73 +176,79 @@ def joinlines(list, sep="\n"):
         return ""
 
 # Possible types of Tokens in input.
-LBRACE, RBRACE, TEXT = range(3)
+LBRACE, RBRACE, TEXT, IDENTIFIER = range(4)
 
 class Token:
-    """Represents tokens; generated from input by Lexer and fed to parse()."""
-    def __init__(self, type, value):
+    """Represents tokens; generated from input by lexer and fed to parse()."""
+    def __init__(self, type, value, line=0):
         self.type = type    # Type of token
         self.value = value  # Text value
+        self.line = line
+
+    def __str__(self):
+        return "'%s'" % re.sub(r'\n', "\\\\n", self.value)
 
     def isa(self, type):
         return self.type == type
 
-class Lexer:
-    """Lexes a wrapper file and spits out Tokens in order."""
-    def __init__(self, lbrace, rbrace):
-        self.lbrace  = lbrace
-        self.rbrace  = rbrace
-        self.in_tag  = False
-        self.text    = StringIO.StringIO()
+
+class LineTrackingLexer(object):
+    """Base class for Lexers that keep track of line numbers."""
+    def __init__(self, lexicon):
+        self.line_no = -1
+        self.scanner = re.Scanner(lexicon)
+
+    def make_token(self, type, value):
+        token = Token(type, value, self.line_no)
+        self.line_no += value.count("\n")
+        return token
+
+    def lex(self, text):
         self.line_no = 0
-    
-    def lex_line(self, line):
-        length = len(line)
-        start = 0
+        tokens, remainder = self.scanner.scan(text)
+        if remainder:
+            sys.stderr.write("Unlexable input:\n%s\n" % remainder)
+            sys.exit(1)
+        self.line_no = -1
+        return tokens
 
-        while (start < length):
-            if self.in_tag:
-                brace_type, brace = (RBRACE, self.rbrace)
-            else:
-                brace_type, brace = (LBRACE, self.lbrace)
+class OuterRegionLexer(LineTrackingLexer):
+    def __init__(self):
+        super(OuterRegionLexer, self).__init__([
+            (r'{{',                     self.lbrace),
+            (r'}}',                     self.rbrace),
+            (r'({(?!{)|}(?!})|[^{}])*', self.text)])
+    def lbrace(self, scanner, token): return self.make_token(LBRACE, token)
+    def rbrace(self, scanner, token): return self.make_token(RBRACE, token)
+    def text(self, scanner, token):   return self.make_token(TEXT, token)
 
-            end = line.find(brace, start)
-            if (end >= 0):
-                self.text.write(line[start:end])
-                yield Token(TEXT, self.text.getvalue())
-                yield Token(brace_type, brace)
-                self.text.close()
-                self.text = StringIO.StringIO()
-                start = end + len(brace)
-                self.in_tag = not self.in_tag
-            else:
-                self.text.write(line[start:])
-                start = length
+class InnerLexer(OuterRegionLexer):
+    def __init__(self):
+        super(OuterRegionLexer, self).__init__([
+            (r'{{',                               self.lbrace),
+            (r'}}',                               self.rbrace),
+            (r'(["\'])?((?:(?!\1)[^\\]|\\.)*)\1', self.quoted_id),
+            (r'([^\s]+)',                         self.identifier),
+            (r'\s+', None)])
+    def identifier(self, scanner, token): return self.make_token(IDENTIFIER, token)
+    def quoted_id(self, scanner, token):
+        # remove quotes from quoted ids.  Note that ids and quoted ids are pretty much the same thing;
+        # the quotes are just optional.  You only need them if you need spaces in your expression.
+        return self.make_token(IDENTIFIER, re.sub(r'^["\'](.*)["\']$', '\\1', token))
 
-    def lex(self, file):
-        self.line_no = 0
-        for line in file:
-            self.line_no += 1
-            for token in self.lex_line(line):
-                yield token
-
-        # Yield last token if there's anything there.
-        last = self.text.getvalue()
-        if last:
-            yield Token(TEXT, last)
-
-# Lexer for wrapper files used by parse() routine below.
-lexer = Lexer("{{","}}")
-
-# Global current filename for error msgs
-filename = ""
+# Global current filename and function name for error msgs
+cur_filename = ""
+cur_function = None
 
 class WrapSyntaxError:
     """Simple Class for syntax errors raised by the wrapper generator (rather than python)"""
     pass
 
 def syntax_error(msg):
-    print "%s:%d: %s" % (filename, lexer.line_no, msg)
+    # TODO: make line numbers actually work.
+    sys.stderr.write("%s:%d: %s\n" % (cur_filename, 0, msg))
+    if cur_function:
+        sys.stderr.write("    While handling %s.\n" % cur_function)
     raise WrapSyntaxError
     
 ################################################################################
@@ -345,6 +350,14 @@ class Param:
         arr = self.array or ''
         return "%s %s%s%s" % (ftype, pointers, self.name, arr)
 
+    def cType(self):
+        if not self.type:
+            return ''
+        else:
+            arr = self.array or ''
+            pointers = self.pointers or ''
+            return "%s%s%s" % (self.type, pointers, arr)
+
     def cFormal(self):
         """Prints out a formal parameter for a C wrapper."""
         if not self.type:
@@ -391,8 +404,11 @@ class Declaration:
     def retType(self):
         return self.rtype
 
-    def argTypeList(self):
-        return "(" + ", ".join(map(Param.cFormal, self.args)) + ")"
+    def formals(self):
+        return [arg.cFormal() for arg in self.args]
+
+    def types(self):
+        return [arg.cType() for arg in self.args]
 
     def argsNoEllipsis(self):
         return filter(lambda arg: arg.name != "...", self.args)
@@ -409,37 +425,29 @@ class Declaration:
     def getArgName(self, index):
         return self.argsNoEllipsis()[index].name
 
-    def fortranArgTypeList(self):
+    def fortranFormals(self):
         formals = map(Param.fortranFormal, self.argsNoEllipsis())
         if self.name == "MPI_Init": formals = []    # Special case for init: no args in fortran
 
         ierr = []
         if self.returnsErrorCode(): ierr = ["MPI_Fint *ierr"]
+        return formals + ierr
 
-        return "(%s)" % ", ".join(formals + ierr)
-
-    def argListNoParens(self):
-        return "%s" % ", ".join(self.argNames())
-
-    def argList(self):
-        return "(%s)" % self.argListNoParens()
-
-    def fortranArgList(self):
+    def fortranArgNames(self):
         names = self.argNames()
         if self.name == "MPI_Init": names = []
 
         ierr = []
         if self.returnsErrorCode(): ierr = ["ierr"]
-
-        return "(%s)" % ", ".join(names + ierr)
+        return names + ierr
 
     def prototype(self, modifiers=""):
         if modifiers: modifiers = joinlines(modifiers, " ")
-        return "%s%s %s%s" % (modifiers, self.retType(), self.name, self.argTypeList())
+        return "%s%s %s(%s)" % (modifiers, self.retType(), self.name, ", ".join(self.formals()))
     
     def pmpi_prototype(self, modifiers=""):
         if modifiers: modifiers = joinlines(modifiers, " ")
-        return "%s%s P%s%s" % (modifiers, self.retType(), self.name, self.argTypeList())
+        return "%s%s P%s(%s)" % (modifiers, self.retType(), self.name, ", ".join(self.formals()))
         
     def fortranPrototype(self, name=None, modifiers=""):
         if not name: name = self.name
@@ -449,7 +457,7 @@ class Declaration:
             rtype = "void"  # Fortran calls use ierr parameter instead
         else:
             rtype = self.rtype
-        return "%s%s %s%s" % (modifiers, rtype, name, self.fortranArgTypeList())
+        return "%s%s %s(%s)" % (modifiers, rtype, name, ", ".join(self.fortranFormals()))
     
 
 types = set()
@@ -474,7 +482,7 @@ def enumerate_mpi_declarations(mpicc):
         popen = subprocess.Popen("%s %s" % (mpicc_cmd, tmpname), shell=True,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except IOError:
-        print "IOError: couldn't run '" + mpicc_cmd + "' for parsing mpi.h"
+        sys.stderr.write("IOError: couldn't run '" + mpicc_cmd + "' for parsing mpi.h\n")
         sys.exit(1)
     
     # Parse out the declarations from the MPI file
@@ -507,7 +515,7 @@ def enumerate_mpi_declarations(mpicc):
                 else:
                     match = formal_re.match(arg)
                     if not match:
-                        print "MATCH FAILED FOR: '" + arg + "' in " + fn_name
+                        sys.stderr.write("MATCH FAILED FOR: '%s' in %s\n" % (arg, fn_name))
                         sys.exit(1)
 
                     type, pointers, name, array = match.groups()
@@ -523,8 +531,8 @@ def enumerate_mpi_declarations(mpicc):
 
     error_status = mpi_h.close()
     if (error_status):
-        print "Error: Couldn't run '" + mpicc_cmd + "' for parsing mpi.h."
-        print "       Process exited with code " + str(error_status)
+        sys.stderr.write("Error: Couldn't run '%s' for parsing mpi.h.\n" % mpicc_cmd)
+        sys.stderr.write("       Process exited with code %d.\n" % error_status)
         sys.exit(1)
 
     # Do some cleanup once we're done reading.
@@ -535,7 +543,7 @@ def write_enter_guard(out, decl):
     """Prevent us from entering wrapper functions if we're already in a wrapper function.
        Just call the PMPI function w/o the wrapper instead."""
     if output_guards:
-        out.write("    if (in_wrapper) return P%s%s;\n" % (decl.name, decl.argList()))
+        out.write("    if (in_wrapper) return P%s(%s);\n" % (decl.name, ", ".join(decl.argNames())))
         out.write("    in_wrapper = 1;\n")
 
 def write_exit_guard(out):
@@ -575,10 +583,10 @@ def write_fortran_binding(out, decl, delegate_name, binding, stmts=None):
         out.write(joinlines(map(lambda s: "    " + s, stmts)))
     if decl.returnsErrorCode():
         # regular MPI fortran functions use an error code
-        out.write("    %s%s;\n" % (delegate_name, decl.fortranArgList()))
+        out.write("    %s(%s);\n" % (delegate_name, ", ".join(decl.fortranArgNames())))
     else:
         # wtick and wtime return a value
-        out.write("    return %s%s;\n" % (delegate_name, decl.fortranArgList()))
+        out.write("    return %s(%s);\n" % (delegate_name, ", ".join(decl.fortranArgNames())))
     out.write("}\n\n")
     
 
@@ -752,18 +760,39 @@ def write_fortran_wrappers(out, decl, return_val):
 # Table of global macros
 macros = {}
 
-# These decorators add macro functions to the outermost function scope.
-def macro(fun):
-    """@macro: for simple macros that do not have bodies, e.g. {{fn_num}}"""
-    macros[fun.__name__] = fun
-    fun.has_body = False
-    return fun
+# This decorator adds macro functions to the outermost function scope.
+def macro(macro_name, **attrs):
+    def decorate(fun):
+        macros[macro_name] = fun # Add macro to outer scope under supplied name
+        fun.has_body = False     # By default, macros have no body.
+        for key in attrs:        # Optionally set/override attributes
+            setattr(fun, key, attrs[key])
+        return fun
+    return decorate
 
-def bodymacro(fun):
-    """@bodymacro: for macros that have bodies, e.g. {{macro}} ... {{endmacro}}"""
-    macro(fun)
-    fun.has_body = True
-    return fun
+def stringify(value):
+    """This handles the way values are printed out when they're returned by an executed chunk."""
+    if isinstance(value, list):
+        return ", ".join(value)
+    else:
+        return str(value)
+
+def handle_list(list_name, list, args):
+    """This function handles indexing lists used as macros in the wrapper generator.
+       There are two syntaxes:
+       {{<list_name>}}          Evaluates to the whole list, e.g. 'foo, bar, baz'
+       {{<list_name> <index>}}  Evaluates to a particular element of a list.
+    """
+    if not args:
+        return list
+    else:
+        len(args) == 1 or syntax_error("Wrong number of args for list expression.")
+        try:
+            return list[int(args[0])]
+        except ValueError:
+            syntax_error("Invald index value: '%s'" % args[0])
+        except IndexError:
+            syntax_error("Index out of range in '%s': %d" % (list_name, index))
 
 class TypeApplier:
     """This class implements a Macro function for applying something callable to
@@ -773,8 +802,7 @@ class TypeApplier:
         self.decl = decl
 
     def __call__(self, out, scope, args, children):
-        if len(args) != 2:
-            syntax_error("Wrong number of args in apply macro.")
+        len(args) == 2 or syntax_error("Wrong number of args in apply macro.")
         type, macro_name = args
         for arg in self.decl.args:
             if arg.type == type:
@@ -782,20 +810,21 @@ class TypeApplier:
 
 def include_decl(scope, decl):
     """This function is used by macros to include attributes MPI declarations in their scope."""
-    scope["retType"]     = decl.retType()
-    scope["args"]        = decl.argListNoParens()
-    scope["argList"]     = decl.argList()
-    scope["argTypeList"] = decl.argTypeList()
+    scope["ret_type"] = decl.retType()
+    scope["args"]     = decl.argNames()
+    scope["types"]    = decl.types()
+    scope["formals"]  = decl.formals()
+    scope["apply_to_type"] = TypeApplier(decl)
     scope.function_name  = decl.name
 
+    # These are old-stype, deprecated names.
     def get_arg(out, scope, args, children):
-        try:
-            out.write(decl.getArgName(int(args[0])))
-        except (ValueError, IndexError):
-            syntax_error("Invalid argument index: " + args[0] + " for " + decl.name)
-
-    scope["get_arg"] = get_arg
-    scope["applyToType"] = TypeApplier(decl)
+        return handle_list("args", decl.argNames(), args)
+    scope["get_arg"]     = get_arg
+    scope["applyToType"] = scope["apply_to_type"]
+    scope["retType"]     = scope["ret_type"]
+    scope["argList"]     = "(%s)" % ", ".join(scope["args"])
+    scope["argTypeList"] = "(%s)" % ", ".join(scope["formals"])
 
 def all_but(fn_list):
     """Return a list of all mpi functions except those in fn_list"""
@@ -803,13 +832,15 @@ def all_but(fn_list):
     diff = all_mpi - set(fn_list)
     return [x for x in diff]
 
-@bodymacro
+@macro("foreachfn", has_body=True)
 def foreachfn(out, scope, args, children):
     """Iterate over all functions listed in args."""
     args or syntax_error("Error: foreachfn requires function name argument.")
+    global cur_function
         
     fn_var = args[0]
     for fn_name in args[1:]:
+        cur_function = fn_name
         if not fn_name in mpi_functions:
             syntax_error(fn_name + " is not an MPI function")
 
@@ -819,15 +850,19 @@ def foreachfn(out, scope, args, children):
         include_decl(fn_scope, fn)
 
         for child in children:
-            child.execute(out, fn_scope)
+            value = child.execute(out, fn_scope)
+            if value: out.write(stringify(value))
+    cur_function = None
 
-@bodymacro
+@macro("fn", has_body=True)
 def fn(out, scope, args, children):
     """Iterate over listed functions and generate skeleton too."""
     args or syntax_error("Error: fn requires function name argument.")
+    global cur_function
 
     fn_var = args[0]
     for fn_name in args[1:]:
+        cur_function = fn_name
         if not fn_name in mpi_functions:
             syntax_error(fn_name + " is not an MPI function")
 
@@ -837,9 +872,11 @@ def fn(out, scope, args, children):
         fn_scope = Scope(scope)
         fn_scope[fn_var] = fn_name
         include_decl(fn_scope, fn)
-        fn_scope["returnVal"] = return_val
 
-        c_call = "%s = P%s%s;" % (return_val, fn.name, fn.argList())
+        fn_scope["ret_val"] = return_val
+        fn_scope["returnVal"]  = fn_scope["ret_val"]  # deprecated name.
+
+        c_call = "%s = P%s(%s);" % (return_val, fn.name, ", ".join(fn.argNames()))
         if fn_name == "MPI_Init" and output_fortran_wrappers:
             def callfn(out, scope, args, children):
                 # All this is to deal with fortran, since fortran's MPI_Init() function is different
@@ -879,7 +916,8 @@ def fn(out, scope, args, children):
             
         def write_body(out):
             for child in children:
-                child.execute(out, fn_scope)
+                value = child.execute(out, fn_scope)
+                if value: out.write(stringify(value))
 
         out.write("/* ================== C Wrappers for %s ================== */\n" % fn_name)
         write_c_wrapper(out, fn, return_val, write_body)
@@ -887,38 +925,77 @@ def fn(out, scope, args, children):
             out.write("/* =============== Fortran Wrappers for %s =============== */\n" % fn_name)
             write_fortran_wrappers(out, fn, return_val)
             out.write("/* ================= End Wrappers for %s ================= */\n\n\n" % fn_name)
+    cur_function = None
 
-@bodymacro
+@macro("forallfn", has_body=True)
 def forallfn(out, scope, args, children):
     """Iterate over all but the functions listed in args."""
     args or syntax_error("Error: forallfn requires function name argument.")
     foreachfn(out, scope, [args[0]] + all_but(args[1:]), children)
 
-@bodymacro
+@macro("fnall", has_body=True)
 def fnall(out, scope, args, children):
     """Iterate over all but listed functions and generate skeleton too."""
     args or syntax_error("Error: fnall requires function name argument.")
     fn(out, scope, [args[0]] + all_but(args[1:]), children)
 
-@macro
+@macro("sub")
 def sub(out, scope, args, children):
-    """{{sub <new_string> <old_string> <regexp> <substitution>}}
-       Declares <new_string> in the current scope and gives it the value of <old_string>
-       with all instances of <regexp> replaced with <substitution>.  You may use any
-       valid python regexp for <regexp> and any valid substitution value for <substitution>.
-       The regexps follow the same syntax as Python's re.sub(), and they may be single or
-       double quoted (though it's not necessary unless you use spaces in the expressions).
+    """{{sub <string> <regexp> <substitution>}}
+       Replaces value of <string> with all instances of <regexp> replaced with <substitution>.
     """
-    len(args) == 4 or syntax_error("'sub' macro takes exactly 4 arguments.")
-    new_string, old_string, regex, substitution = args
-    if not old_string in scope:
-        syntax_error("'%s' was not in scope when executing 'sub' macro." % old_string)
-    scope[new_string] = re.sub(regex, substitution, scope[old_string])
+    len(args) == 3 or syntax_error("'sub' macro takes exactly 4 arguments.")
+    string, regex, substitution = args
+    if isinstance(string, list):
+        return [re.sub(regex, substitution, s) for s in string]
+    if not isinstance(regex, str):
+        syntax_error("Invalid regular expression in 'sub' macro: '%s'" % regex)
+    else:
+        return re.sub(regex, substitution, string)
 
-@macro
+@macro("zip")
+def zip_macro(out, scope, args, children):
+    len(args) == 2 or syntax_error("'zip' macro takes exactly 2 arguments.")
+    if not all([isinstance(a, list) for a in args]):
+        syntax_error("Arguments to 'zip' macro must be lists.")
+    a, b = args
+    return ["%s %s" % x for x in zip(a, b)]
+
+@macro("def")
+def def_macro(out, scope, args, children):
+    len(args) == 2 or syntax_error("'def' macro takes exactly 2 arguments.")
+    scope[args[0]] = args[1]
+
+@macro("list")
+def list_macro(out, scope, args, children):
+    result = []
+    for arg in args:
+        if isinstance(arg, list):
+            result.extend(arg)
+        else:
+            result.append(arg)
+    return result
+
+@macro("filter")
+def filter_macro(out, scope, args, children):
+    """{{filter <regex> <list>}}
+       Returns a list containing all elements of <list> that <regex> matches.
+    """
+    len(args) == 2 or syntax_error("'filter' macro takes exactly 2 arguments.")
+    regex, l = args
+    if not isinstance(l, list):
+        syntax_error("Invalid list in 'filter' macro: '%s'" % str(list))
+    if not isinstance(regex, str):
+        syntax_error("Invalid regex in 'filter' macro: '%s'" % str(regex))
+    def match(s):
+        return re.search(regex, s)
+    return filter(match, l)
+
+@macro("fn_num")
 def fn_num(out, scope, args, children):
-    out.write("%d" % fn_num.val)
+    val = fn_num.val
     fn_num.val += 1
+    return val
 fn_num.val = 0  # init the counter here.
 
 
@@ -945,15 +1022,8 @@ class Chunk:
         file.write(text)
 
     def write(self, file=sys.stdout, l=0):
-        if self.macro: 
-            self.iwrite(file, l, self.macro + "\n")
-
-        if self.args: 
-            self.iwrite(file, l, " ".join(self.args) + "\n")
-
-        if self.text: 
-            self.iwrite(file, l, "TEXT\n")
-
+        if self.macro: self.iwrite(file, l, "{{%s %s}}" % (self.macro, " ".join([str(arg) for arg in self.args])))
+        if self.text:  self.iwrite(file, l, "TEXT\n")
         for child in self.children:
             child.write(file, l+1)
 
@@ -962,74 +1032,147 @@ class Chunk:
             out.write(self.text)
         else:
             if not self.macro in scope:
-                error_msg = "Invalid macro: '" + self.macro + "'"
+                error_msg = "Invalid macro: '%s'" % self.macro
                 if scope.function_name:
                     error_msg += " for " + scope.function_name
                 syntax_error(error_msg)
 
-            macro = scope[self.macro]
-            if isinstance(macro, str):
-                # raw strings in the scope will just get printed out.
-                out.write(macro)
+            value = scope[self.macro]
+            if hasattr(value, "__call__"):
+                # It's a macro, so we need to execute it.  But first evaluate its args.
+                def eval_arg(arg):
+                    if isinstance(arg, Chunk):
+                        return arg.execute(out, scope)
+                    else:
+                        return arg
+                args = [eval_arg(arg) for arg in self.args]
+                return value(out, scope, args, self.children)
+            elif isinstance(value, list):
+                # Special case for handling lists and list indexing
+                return handle_list(self.macro, value, self.args)
             else:
-                # Parents of child macros must create new scopes.
-                macro(out, scope, self.args, self.children)
+                # Just return the value of anything else
+                return value
         
+class Parser:
+    """Parser for the really simple wrappergen grammar.
+       This parser has support for multiple lexers.  self.tokens is a list of iterables, each
+       representing a new token stream.  You can add additional tokens to be lexed using push_tokens.
+       This will cause the pushed tokens to be handled before any others.  This allows us to switch
+       lexers while parsing, so that the outer part of the file is processed in a language-agnostic
+       way, but stuff inside macros is handled as its own macro language.
+    """
+    def __init__(self, macros):
+        self.macros = macros
+        self.macro_lexer = InnerLexer()
+        self.tokens = iter([]) # iterators over tokens, handled in order.  Starts empty.
+        self.token = None      # last accepted token
+        self.next = None       # next token
 
-def parse(tokens, macros, end_macro=None):
-    """Turns a string of tokens into a list of chunks.
-       Macros that have a has_body attribute will be recursively parsed
-       and the result will be appended as a list of child chunks."""
-    chunk_list = []
+    def gettok(self):
+        """Puts the next token in the input stream into self.next."""
+        try:
+            self.next = self.tokens.next()
+        except StopIteration:
+            self.next = None
 
+    def push_tokens(self, iterable):
+        """Adds all tokens in some iterable to the token stream."""
+        self.tokens = itertools.chain(iter(iterable), iter([self.next]), self.tokens)
+        self.gettok()
 
-    for token in tokens:
-        chunk = Chunk()
+    def accept(self, id):
+        """Puts the next symbol in self.token if we like it.  Then calls gettok()"""
+        if self.next.isa(id):
+            self.token = self.next
+            self.gettok()
+            return True
+        return False
 
-        if token.isa(TEXT):
-            chunk.text = token.value
+    def unexpected_token(self):
+        syntax_error("Unexpected token: %s." % self.next)
 
-        elif token.isa(LBRACE):
-            try:
-                text, close = tokens.next(), tokens.next()
-            except StopIteration:
-                syntax_error("Unterminated macro.")
-
-            if not text.isa(TEXT) or not close.isa(RBRACE):
-                syntax_error("Expected macro body after open brace.")
-
-            # Split args out of the text between lbrace and rbrace, taking quotes into account.  This
-            # matches either "foo" 'foo' or just plain foo, and it handles escaped \' or \" in strings.
-            args = re.findall(r'(["\'])?(?(1)((?:(?!\1)[^\\]|\\.)*)\1|([^\s]+))', text.value)
-            def nonemptymatch(x):     # Grabs the match from the above that was not ''
-                if x[1] == '': return x[2]
-                else:          return x[1]
-            args = [nonemptymatch(x) for x in args]
-
-            name = args.pop(0)
-            if name == end_macro:
-                break
-            elif isindex(name):    # Special case for arg numbers -- these call get_arg
-                chunk.macro = "get_arg"
-                chunk.args = [name]
-            else:
-                chunk.macro = name
-                chunk.args  = args
-                if name in macros and macros[name].has_body:
-                    chunk.children = parse(tokens, macros, "end" + name)
+    def expect(self, id):
+        """Like accept(), but fails if we don't like the next token."""
+        if self.accept(id):
+            return True
         else:
-            syntax_error("Expected text block or macro.")
+            if self.next:
+                self.unexpected_token()
+            else:
+                syntax_error("Unexpected end of file.")
+            sys.exit(1)
 
-        chunk_list.append(chunk)
+    def is_body_macro(self, name):
+        """Shorthand for testing whether a particular name is the name of a macro that has a body.
+           Need this for parsing the language b/c things like {{fn}} need a corresponding {{endfn}}.
+        """
+        return name in self.macros and self.macros[name].has_body
 
-    return chunk_list
+    def macro(self, accept_body_macros=True):
+        # lex inner-macro text as wrapper language if we encounter text here.
+        if self.accept(TEXT):
+            self.push_tokens(self.macro_lexer.lex(self.token.value))
+
+        # Now proceed with parsing the macro language's tokens
+        chunk = Chunk()
+        self.expect(IDENTIFIER)
+        chunk.macro = self.token.value
+
+        if not accept_body_macros and self.is_body_macro(chunk.macro):
+            syntax_error("Cannot use body macros in expression context: '%s'" % chunk.macro)
+            eys.exit(1)
+
+        while True:
+            if self.accept(LBRACE):
+                chunk.args.append(self.macro(False))
+            elif self.accept(IDENTIFIER):
+                chunk.args.append(self.token.value)
+            elif self.accept(TEXT):
+                self.push_tokens(self.macro_lexer.lex(self.token.value))
+            else:
+                self.expect(RBRACE)
+                break
+        return chunk
+
+    def text(self, end_macro = None):
+        chunks = []
+        while self.next:
+            if self.accept(TEXT):
+                chunk = Chunk()
+                chunk.text = self.token.value
+                chunks.append(chunk)
+            elif self.accept(LBRACE):
+                chunk = self.macro()
+                name = chunk.macro
+
+                if name == end_macro:
+                    # end macro: just break and don't append
+                    break
+                elif isindex(chunk.macro):
+                    # Special case for indices -- raw number macros index 'args' list
+                    chunk.macro = "args"
+                    chunk.args = [name]
+                elif self.is_body_macro(name):
+                    chunk.children = self.text("end"+name)
+                chunks.append(chunk)
+            else:
+                self.unexpected_token()
+
+        return chunks
+
+    def parse(self, text):
+        outer_lexer = OuterRegionLexer()
+        self.push_tokens(outer_lexer.lex(text))
+        self.gettok()
+        return self.text()
 
 ################################################################################
 # Main script:
 #   Get arguments, set up outer scope, parse files, generator wrappers.
 ################################################################################
 def usage():
-    print usage_string
+    sys.stderr.write(usage_string)
     sys.exit(2)
 
 # Let the user specify another mpicc to get mpi.h from
@@ -1039,23 +1182,18 @@ output_filename = None
 try:
     opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdc:o:i:")
 except getopt.GetoptError, err:
-    print err
+    sys.stderr.write(err + "\n")
     usage()
 
 for opt, arg in opts:
-    if opt == "-d": 
-        dump_prototypes = True
-    if opt == "-f": 
-        output_fortran_wrappers = True
-    if opt == "-s": 
-        skip_headers = True
-    if opt == "-g": 
-        output_guards = True
-    if opt == "-c": 
-        mpicc = arg
+    if opt == "-d": dump_prototypes = True
+    if opt == "-f": output_fortran_wrappers = True
+    if opt == "-s": skip_headers = True
+    if opt == "-g": output_guards = True
+    if opt == "-c": mpicc = arg
     if opt == "-i":
         if not arg in pmpi_init_bindings:
-            print "ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(possible_bindings)
+            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(possible_bindings))
             usage()
         else:
             pmpi_init_binding = arg
@@ -1075,43 +1213,41 @@ if len(args) < 1 and not dump_prototypes:
 #
 for decl in enumerate_mpi_declarations(mpicc):
     mpi_functions[decl.name] = decl
-    if dump_prototypes:
-        print decl
+    if dump_prototypes: print decl
 
 # If we're just dumping prototypes, we can just exit here.
-if dump_prototypes:
-    sys.exit(0)
+if dump_prototypes: sys.exit(0)
 
 # Start with some headers and definitions.
 if not skip_headers:
     output.write(wrapper_includes)
-    if output_guards:
-        output.write("static int in_wrapper = 0;\n")
+    if output_guards: output.write("static int in_wrapper = 0;\n")
 
-#
 # Parse each file listed on the command line and execute
 # it once it's parsed.
-#
 try:
     fileno = 0
     for f in args:
-        filename = f
-        file = open(filename)
+        cur_filename = f
+        file = open(cur_filename)
 
         # Outer scope contains fileno and the fundamental macros.
         outer_scope = Scope()
         outer_scope["fileno"] = str(fileno)
         outer_scope.include(macros)
 
-        chunks = parse(lexer.lex(file), macros)
-        for chunk in chunks:
-            chunk.execute(output, Scope(outer_scope))
+        parser = Parser(macros)
+        chunks = parser.parse(file.read())
 
+        for chunk in chunks:
+            value = chunk.execute(output, Scope(outer_scope))
+            if value:
+                output.write(stringify(value))
         fileno += 1
+        
 except WrapSyntaxError:
     output.close()
-    if output_filename:
-        os.remove(output_filename)
+    if output_filename: os.remove(output_filename)
     sys.exit(1)
 
 output.close()
