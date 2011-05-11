@@ -770,13 +770,6 @@ def macro(macro_name, **attrs):
         return fun
     return decorate
 
-def stringify(value):
-    """This handles the way values are printed out when they're returned by an executed chunk."""
-    if isinstance(value, list):
-        return ", ".join(value)
-    else:
-        return str(value)
-
 def handle_list(list_name, list, args):
     """This function handles indexing lists used as macros in the wrapper generator.
        There are two syntaxes:
@@ -850,8 +843,7 @@ def foreachfn(out, scope, args, children):
         include_decl(fn_scope, fn)
 
         for child in children:
-            value = child.execute(out, fn_scope)
-            if value: out.write(stringify(value))
+            child.evaluate(out, fn_scope)
     cur_function = None
 
 @macro("fn", has_body=True)
@@ -916,8 +908,7 @@ def fn(out, scope, args, children):
             
         def write_body(out):
             for child in children:
-                value = child.execute(out, fn_scope)
-                if value: out.write(stringify(value))
+                child.evaluate(out, fn_scope)
 
         out.write("/* ================== C Wrappers for %s ================== */\n" % fn_name)
         write_c_wrapper(out, fn, return_val, write_body)
@@ -1028,6 +1019,10 @@ class Chunk:
             child.write(file, l+1)
 
     def execute(self, out, scope):
+        """This function executes a chunk.  For strings, lists, text chunks, etc., this just
+           entails returning the chunk's value.  For callable macros, this executes and returns
+           the chunk's value.
+        """
         if not self.macro:
             out.write(self.text)
         else:
@@ -1053,7 +1048,23 @@ class Chunk:
             else:
                 # Just return the value of anything else
                 return value
-        
+
+    def stringify(self, value):
+        """Used by evaluate() to print the return values of chunks out to the output file."""
+        if isinstance(value, list):
+            return ", ".join(value)
+        else:
+            return str(value)
+
+    def evaluate(self, out, scope):
+        """This is an 'interactive' version of execute.  This should be called when
+           the chunk's value (if any) should be written out.  Body macros and the outermost
+           scope should use this instead of execute().
+        """
+        value = self.execute(out, scope)
+        if value is not None:  # Note the distinction here -- 0 is false but we want to print it!
+            out.write(self.stringify(value))
+
 class Parser:
     """Parser for the really simple wrappergen grammar.
        This parser has support for multiple lexers.  self.tokens is a list of iterables, each
@@ -1164,7 +1175,6 @@ class Parser:
     def parse(self, text):
         outer_lexer = OuterRegionLexer()
         self.push_tokens(outer_lexer.lex(text))
-        self.gettok()
         return self.text()
 
 ################################################################################
@@ -1240,9 +1250,7 @@ try:
         chunks = parser.parse(file.read())
 
         for chunk in chunks:
-            value = chunk.execute(output, Scope(outer_scope))
-            if value:
-                output.write(stringify(value))
+            chunk.evaluate(output, Scope(outer_scope))
         fileno += 1
         
 except WrapSyntaxError:
