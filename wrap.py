@@ -798,7 +798,7 @@ class TypeApplier:
         len(args) == 2 or syntax_error("Wrong number of args in apply macro.")
         type, macro_name = args
         for arg in self.decl.args:
-            if arg.type == type:
+            if arg.cType() == type:
                 out.write("%s(%s);\n" % (macro_name, arg.name))
 
 def include_decl(scope, decl):
