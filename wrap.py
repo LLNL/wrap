@@ -222,6 +222,16 @@ class OuterRegionLexer(LineTrackingLexer):
     def rbrace(self, scanner, token): return self.make_token(RBRACE, token)
     def text(self, scanner, token):   return self.make_token(TEXT, token)
 
+class OuterCLexer(OuterRegionLexer):
+    def __init__(self):
+        super(OuterRegionLexer, self).__init__([
+            (r'(["\'])?((?:(?!\1)[^\\]|\\.)*)\1',     self.text),   # quoted string
+            (r'/\*(.|[\r\n])*?\*/',                   self.text),   # multiline comment
+            (r'//(.|[\r\n])*?(?=[\r\n])',             self.text),   # single line comment
+            (r'{{',                                   self.lbrace),
+            (r'}}',                                   self.rbrace),
+            (r'({(?!{)|}(?!})|/(?![/*])|[^{}/\'"])*', self.text)])
+
 class InnerLexer(OuterRegionLexer):
     def __init__(self):
         super(OuterRegionLexer, self).__init__([
@@ -1173,7 +1183,10 @@ class Parser:
         return chunks
 
     def parse(self, text):
-        outer_lexer = OuterRegionLexer()
+        if skip_headers:
+            outer_lexer = OuterRegionLexer()  # Not generating C code, text is text.
+        else:
+            outer_lexer = OuterCLexer()       # C code. Consider comments, quotes.
         self.push_tokens(outer_lexer.lex(text))
         return self.text()
 
