@@ -7,10 +7,7 @@
 /// Run it through wrap.py like this to see sample output:
 ///     wrap.py -o output.txt example.w
 ///
-/// Note that this won't compile; this file is mostly for example purposes!
-/// If you want to see the output without all the initial #includes and #defines that
-/// wrap.py prepends, run it like this:
-///     wrap.py -s -o output.txt example.w
+/// Note that this won't compile; this file is just a simple tutorial with examples.
 ///
 
 // Say you just want to generate wrappers for some functions.  That's easy with fn and fnall.
@@ -148,9 +145,6 @@
   {{ret_type}} {{foo}}({{zip {{sub {{types}} '.*' {{ret_type}}}} {{args}}}});
 
   // replace any MPI type with MPI_Foo in the parameter list
-  {{ret_type}} {{foo}}({{zip {{sub {{types}} 'MPI_.*' MPI_Foo}} {{args}}}});
-
-  // Same, just show that quotes are optional in regular expressions unless you need spaces.
   {{ret_type}} {{foo}}({{zip {{sub {{types}} 'MPI_.*' MPI_Foo}} {{args}}}});
 }
 {{endforeachfn}}
