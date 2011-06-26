@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 #################################################################################################
-# Copyright (c) 2010, Lawrence Livermore National Security, LLC.  
-# Produced at the Lawrence Livermore National Laboratory  
+# Copyright (c) 2010, Lawrence Livermore National Security, LLC.
+# Produced at the Lawrence Livermore National Laboratory
 # Written by Todd Gamblin, tgamblin@llnl.gov.
 # LLNL-CODE-417602
-# All rights reserved.  
-# 
+# All rights reserved.
+#
 # This file is part of Libra. For details, see http://github.com/tgamblin/libra.
 # Please also read the LICENSE file for further information.
-# 
+#
 # Redistribution and use in source and binary forms, with or without modification, are
 # permitted provided that the following conditions are met:
-# 
+#
 #  * Redistributions of source code must retain the above copyright notice, this list of
 #    conditions and the disclaimer below.
 #  * Redistributions in binary form must reproduce the above copyright notice, this list of
@@ -19,7 +19,7 @@
 #    provided with the distribution.
 #  * Neither the name of the LLNS/LLNL nor the names of its contributors may be used to endorse
 #    or promote products derived from this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS
 # OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 # MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -32,7 +32,7 @@
 #################################################################################################
 usage_string = \
 '''Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
- Python script for creating PMPI wrappers. Roughly follows the syntax of 
+ Python script for creating PMPI wrappers. Roughly follows the syntax of
    the Argonne PMPI wrapper generator, with some enhancements.
  Options:"
    -d             Just dump function declarations parsed out of mpi.h
@@ -44,7 +44,7 @@ usage_string = \
                   Default is \'pmpi_init_\'.  Wrappers compiled for PIC will guess the
                   right binding automatically (use -DPIC when you compile dynamic libs).
    -o file        Send output to a file instead of stdout.
-   
+
  by Todd Gamblin, tgamblin@llnl.gov
 '''
 import tempfile, getopt, subprocess, sys, os, re, StringIO, types, itertools
@@ -62,7 +62,7 @@ pmpi_init_bindings = ["PMPI_INIT", "pmpi_init", "pmpi_init_", "pmpi_init__"]
 
 # Possible function return types to consider, used for declaration parser.
 # In general, all MPI calls we care about return int.  We include double
-# to grab MPI_Wtick and MPI_Wtime, but we'll ignore the f2c and c2f calls 
+# to grab MPI_Wtick and MPI_Wtime, but we'll ignore the f2c and c2f calls
 # that return MPI_Datatypes and other such things.
 rtypes = ['int', 'double' ]
 
@@ -75,7 +75,7 @@ begin_decl_re = re.compile("(" + "|".join(rtypes) + ")\s+(MPI_\w+)\s*\(")
 exclude_re =    re.compile("|".join(exclude_strings))
 end_decl_re =   re.compile("\).*\;")
 
-# Regular Expression for splitting up args. Matching against this 
+# Regular Expression for splitting up args. Matching against this
 # returns three groups: type info, arg name, and array info
 formal_re = re.compile(
     "\s*(" +                       # Start type
@@ -101,7 +101,7 @@ wrapper_includes = '''
 #ifdef __cplusplus
 #define _EXTERN_C_ extern "C"
 #else /* __cplusplus */
-#define _EXTERN_C_ 
+#define _EXTERN_C_
 #endif /* __cplusplus */
 #endif /* _EXTERN_C_ */
 
@@ -129,7 +129,7 @@ _EXTERN_C_ void pmpi_init__(MPI_Fint *ierr);
 default_modifiers = ["_EXTERN_C_"]  # _EXTERN_C_ is #defined (or not) in wrapper_includes. See above.
 
 # Set of MPI Handle types
-mpi_handle_types = set(["MPI_Comm", "MPI_Errhandler", "MPI_File", "MPI_Group", "MPI_Info", 
+mpi_handle_types = set(["MPI_Comm", "MPI_Errhandler", "MPI_File", "MPI_Group", "MPI_Info",
                         "MPI_Op", "MPI_Request", "MPI_Status", "MPI_Datatype", "MPI_Win" ])
 
 # MPI Calls that have array parameters, and mappings from the array parameter positions to the position
@@ -222,15 +222,14 @@ class OuterRegionLexer(LineTrackingLexer):
     def rbrace(self, scanner, token): return self.make_token(RBRACE, token)
     def text(self, scanner, token):   return self.make_token(TEXT, token)
 
-class OuterCLexer(OuterRegionLexer):
+class OuterCommentLexer(OuterRegionLexer):
     def __init__(self):
         super(OuterRegionLexer, self).__init__([
-            (r'(["\'])?((?:(?!\1)[^\\]|\\.)*)\1',     self.text),   # quoted string
-            (r'/\*(.|[\r\n])*?\*/',                   self.text),   # multiline comment
-            (r'//(.|[\r\n])*?(?=[\r\n])',             self.text),   # single line comment
-            (r'{{',                                   self.lbrace),
-            (r'}}',                                   self.rbrace),
-            (r'({(?!{)|}(?!})|/(?![/*])|[^{}/\'"])*', self.text)])
+            (r'/\*(.|[\r\n])*?\*/',                self.text),   # multiline comment
+            (r'//(.|[\r\n])*?(?=[\r\n])',          self.text),   # single line comment
+            (r'{{',                                self.lbrace),
+            (r'}}',                                self.rbrace),
+            (r'({(?!{)|}(?!})|/(?![/*])|[^{}/])*', self.text)])
 
 class InnerLexer(OuterRegionLexer):
     def __init__(self):
@@ -260,7 +259,7 @@ def syntax_error(msg):
     if cur_function:
         sys.stderr.write("    While handling %s.\n" % cur_function)
     raise WrapSyntaxError
-    
+
 ################################################################################
 # MPI Semantics:
 #   Classes in this section describe MPI declarations and types.  These are used
@@ -303,8 +302,8 @@ class Scope:
 mpi_functions = {}
 
 class Param:
-    """Descriptor for formal parameters of MPI functions.  
-       Doesn't represent a full parse, only the initial type information, 
+    """Descriptor for formal parameters of MPI functions.
+       Doesn't represent a full parse, only the initial type information,
        name, and array info of the argument split up into strings.
     """
     def __init__(self, type, pointers, name, array, pos):
@@ -318,7 +317,7 @@ class Param:
     def setDeclaration(self, decl):
         """Needs to be called by Declaration to finish initing the arg."""
         self.decl = decl
-        
+
     def isHandleArray(self):
         """True if this Param represents an array of MPI handle values."""
         return (self.decl.name in mpi_array_calls
@@ -327,13 +326,13 @@ class Param:
     def countParam(self):
         """If this Param is a handle array, returns the Param that represents the count of its elements"""
         return self.decl.args[mpi_array_calls[self.decl.name][self.pos]]
-    
+
     def isHandle(self):
         """True if this Param is one of the MPI builtin handle types."""
         return self.type in mpi_handle_types
 
     def isStatus(self):
-        """True if this Param is an MPI_Status.  MPI_Status is handled differently 
+        """True if this Param is an MPI_Status.  MPI_Status is handled differently
            in c2f/f2c calls from the other handle types.
         """
         return self.type == "MPI_Status"
@@ -355,7 +354,7 @@ class Param:
             pointers = ""
         else:
             pointers = "*"
-            
+
         # Put it all together and return the fortran wrapper type here.
         arr = self.array or ''
         return "%s %s%s%s" % (ftype, pointers, self.name, arr)
@@ -393,7 +392,7 @@ class Param:
 
 
 class Declaration:
-    """ Descriptor for simple MPI function declarations.  
+    """ Descriptor for simple MPI function declarations.
         Contains return type, name of function, and a list of args.
     """
     def __init__(self, rtype, name):
@@ -454,11 +453,11 @@ class Declaration:
     def prototype(self, modifiers=""):
         if modifiers: modifiers = joinlines(modifiers, " ")
         return "%s%s %s(%s)" % (modifiers, self.retType(), self.name, ", ".join(self.formals()))
-    
+
     def pmpi_prototype(self, modifiers=""):
         if modifiers: modifiers = joinlines(modifiers, " ")
         return "%s%s P%s(%s)" % (modifiers, self.retType(), self.name, ", ".join(self.formals()))
-        
+
     def fortranPrototype(self, name=None, modifiers=""):
         if not name: name = self.name
         if modifiers: modifiers = joinlines(modifiers, " ")
@@ -468,7 +467,7 @@ class Declaration:
         else:
             rtype = self.rtype
         return "%s%s %s(%s)" % (modifiers, rtype, name, ", ".join(self.fortranFormals()))
-    
+
 
 types = set()
 all_pointers = set()
@@ -478,14 +477,14 @@ def enumerate_mpi_declarations(mpicc):
         Parses the output for declarations, and yields each declaration to
         the caller.
     """
-    # Create an input file that just includes <mpi.h> 
+    # Create an input file that just includes <mpi.h>
     tmpfile = tempfile.NamedTemporaryFile('w+b', -1, '.c')
     tmpname = "%s" % tmpfile.name
     tmpfile.write('#include <mpi.h>')
     tmpfile.write("\n")
     tmpfile.flush()
 
-    # Run the mpicc -E on the temp file and pipe the output 
+    # Run the mpicc -E on the temp file and pipe the output
     # back to this process for parsing.
     mpicc_cmd = "%s -E" % mpicc
     try:
@@ -494,7 +493,7 @@ def enumerate_mpi_declarations(mpicc):
     except IOError:
         sys.stderr.write("IOError: couldn't run '" + mpicc_cmd + "' for parsing mpi.h\n")
         sys.exit(1)
-    
+
     # Parse out the declarations from the MPI file
     mpi_h = popen.stdout
     for line in mpi_h:
@@ -515,8 +514,8 @@ def enumerate_mpi_declarations(mpicc):
             # Handle functions that take no args specially
             if arg_list == ['void']:
                 arg_list = []
-            
-            # Parse formal parameter descriptors out of args            
+
+            # Parse formal parameter descriptors out of args
             decl = Declaration(return_type, fn_name)
             arg_num = 0
             for arg in arg_list:
@@ -533,10 +532,10 @@ def enumerate_mpi_declarations(mpicc):
                     all_pointers.add(pointers)
                     # If there's no name, make one up.
                     if not name: name = "arg_" + str(arg_num)
-                        
+
                     decl.addArgument(Param(type.strip(), pointers, name, array, arg_num))
                 arg_num += 1
-                    
+
             yield decl
 
     error_status = mpi_h.close()
@@ -598,7 +597,7 @@ def write_fortran_binding(out, decl, delegate_name, binding, stmts=None):
         # wtick and wtime return a value
         out.write("    return %s(%s);\n" % (delegate_name, ", ".join(decl.fortranArgNames())))
     out.write("}\n\n")
-    
+
 
 class FortranDelegation:
     """Class for constructing a call to a Fortran wrapper delegate function.  Provides
@@ -623,7 +622,7 @@ class FortranDelegation:
     def addActual(self, actual):
         self.actuals.append(actual)
         self.mpich_actuals.append(actual)
-        
+
     def addActualMPICH(self, actual):
         self.mpich_actuals.append(actual)
 
@@ -638,7 +637,7 @@ class FortranDelegation:
 
     def write(self, out):
         assert len(self.actuals) == len(self.mpich_actuals)
-        
+
         call = "    %s = %s" % (self.return_val, self.decl.name)
         mpich_call = "%s(%s);\n" % (call, ", ".join(self.mpich_actuals))
         mpi2_call = "%s(%s);\n" % (call, ", ".join(self.actuals))
@@ -666,7 +665,7 @@ def write_fortran_wrappers(out, decl, return_val):
     out.write(" { \n")
 
     call = FortranDelegation(decl, return_val)
-    
+
     if decl.name == "MPI_Init":
         # Use out.write() here so it comes at very beginning of wrapper function
         out.write("    int argc = 0;\n");
@@ -676,7 +675,7 @@ def write_fortran_wrappers(out, decl, return_val):
         call.write(out)
         out.write("    *ierr = %s;\n" % return_val)
         out.write("}\n\n")
-    
+
         # Write out various bindings that delegate to the main fortran wrapper
         write_fortran_binding(out, decl, delegate_name, "MPI_INIT",   ["fortran_init = 1;"])
         write_fortran_binding(out, decl, delegate_name, "mpi_init",   ["fortran_init = 2;"])
@@ -688,7 +687,7 @@ def write_fortran_wrappers(out, decl, return_val):
     for arg in decl.args:
         if arg.name == "...":   # skip ellipsis
             continue
-    
+
         if not (arg.pointers or arg.array):
             if not arg.isHandle():
                 # These are pass-by-value arguments, so just deref and pass thru
@@ -727,7 +726,7 @@ def write_fortran_wrappers(out, decl, return_val):
                     temp_arr_type = "%s*" % arg.type
                     call.addTemp(temp_arr_type, temp)
                     call.addTemp("int", "i")
-                
+
                     # generate a copy and a writeback statement for this type of handle
                     if arg.isStatus():
                         copy = "    %s_f2c(&%s[i], &%s[i])"  % (conv, arg.name, temp)
@@ -735,7 +734,7 @@ def write_fortran_wrappers(out, decl, return_val):
                     else:
                         copy = "    temp_%s[i] = %s_f2c(%s[i])"  % (arg.name, conv, arg.name)
                         writeback = "    %s[i] = %s_c2f(temp_%s[i])" % (arg.name, conv, arg.name)
-                
+
                     # Generate the call surrounded by temp array allocation, copies, writebacks, and temp free
                     count = "*%s" % arg.countParam().name
                     call.addCopy("%s = (%s)malloc(sizeof(%s) * %s);" %
@@ -840,7 +839,7 @@ def foreachfn(out, scope, args, children):
     """Iterate over all functions listed in args."""
     args or syntax_error("Error: foreachfn requires function name argument.")
     global cur_function
-        
+
     fn_var = args[0]
     for fn_name in args[1:]:
         cur_function = fn_name
@@ -915,7 +914,7 @@ def fn(out, scope, args, children):
 
         else:
             fn_scope["callfn"] = c_call
-            
+
         def write_body(out):
             for child in children:
                 child.evaluate(out, fn_scope)
@@ -1008,7 +1007,7 @@ fn_num.val = 0  # init the counter here.
 class Chunk:
     """Represents a piece of a wrapper file.  Is either a text chunk
        or a macro chunk with children to which the macro should be applied.
-       macros are evaluated lazily, so the macro is just a string until 
+       macros are evaluated lazily, so the macro is just a string until
        execute is called and it is fetched from its enclosing scope."""
     def __init__(self):
         self.macro    = None
@@ -1018,7 +1017,7 @@ class Chunk:
 
     def iwrite(self, file, level, text):
         """Write indented text."""
-        for x in xrange(level): 
+        for x in xrange(level):
             file.write("  ")
         file.write(text)
 
@@ -1184,9 +1183,9 @@ class Parser:
 
     def parse(self, text):
         if skip_headers:
-            outer_lexer = OuterRegionLexer()  # Not generating C code, text is text.
+            outer_lexer = OuterRegionLexer()   # Not generating C code, text is text.
         else:
-            outer_lexer = OuterCLexer()       # C code. Consider comments, quotes.
+            outer_lexer = OuterCommentLexer()  # C code. Considers C-style comments.
         self.push_tokens(outer_lexer.lex(text))
         return self.text()
 
@@ -1220,7 +1219,7 @@ for opt, arg in opts:
             usage()
         else:
             pmpi_init_binding = arg
-    if opt == "-o": 
+    if opt == "-o":
         try:
             output_filename = arg
             output = open(output_filename, "w")
@@ -1265,7 +1264,7 @@ try:
         for chunk in chunks:
             chunk.evaluate(output, Scope(outer_scope))
         fileno += 1
-        
+
 except WrapSyntaxError:
     output.close()
     if output_filename: os.remove(output_filename)
