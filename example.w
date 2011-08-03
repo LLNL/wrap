@@ -16,7 +16,7 @@
   {{callfn}}
 {{endfn}}
 
-// Usually, we add some braces to that so that the editor gets the indentation right  You 
+// Usually, we add some braces to that so that the editor gets the indentation right  You
 // don't *need* the braces, but they look nice and help emacs understand where your nested
 // scopes are in C mode.
 {{fn foo MPI_Send MPI_Recv}} {
@@ -69,6 +69,10 @@
   // The name of the function (the name comes from the foreachfn "loop" macro above)
   {{foo}}
 
+  // A unique number, starting at zero and increasing each time it is evaluated
+  // this is a holdover from the MPE wrapper generator.
+  {{fn_num}}
+
   // You can use regular expression substitutions on variables and print the result.
   // This, for example, renames MPI_ functions to have NQJ_ prefixes instead.  Here
   // it prints out either NQJ_Send or NQJ_Recv, depending on which iteration of the
@@ -80,13 +84,13 @@
   {{def my_var {{ret_type}}}}
   {{my_var}}
 
-  // Suppose you wanted to substitute MPI for NQJ *once*, then use that value 
+  // Suppose you wanted to substitute MPI for NQJ *once*, then use that value
   // repeatedly in this scope:
   {{def nqjfun {{sub {{foo}} MPI_ NQJ_}}}}
   {{nqjfun}}  {{nqjfun}}  {{nqjfun}}
 
   // Not everything in wrap.py is a scalar!  There are also list values.  These
-  // are important for dealing with parameter lists and 
+  // are important for dealing with parameter lists and
 
   // Formal parameters:
   {{formals}}
@@ -113,10 +117,10 @@
 
   // Create a list of your own strings.  This prints out foo, bar, baz.
   {{list foo bar baz}}
-  
+
   // Add newarg to the beginning of the args list and print the result:
   {{list newarg {{args}}}}
-  
+
   // Add newarg to the end of the args list:
   {{list {{args}} newarg}}
 
@@ -146,6 +150,16 @@
 
   // replace any MPI type with MPI_Foo in the parameter list
   {{ret_type}} {{foo}}({{zip {{sub {{types}} 'MPI_.*' MPI_Foo}} {{args}}}});
+
+
+  // The apply_to_type macro generates code to apply a callable thing
+  // (function, macro, functor) to every parameter of a particular type
+
+  // This will generate analyze_comm(comm) calls for each MPI_Comm parameter
+  {{apply_to_type MPI_Comm analyze_comm}}
+
+  // This will call some_function on every int parameter to the call
+  {{apply_to_type int some_function}}
 }
 {{endforeachfn}}
 
