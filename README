@@ -2,8 +2,11 @@ wrap:  a PMPI wrapper generator.
 https://github.com/tgamblin/wrap
 
 =============================================================================
-For a more thorough tutorial, look at example.w!
-All the stuff here will likely be moved to a separate file for reference
+For a more thorough tutorial, look at example.w!  It walks you through
+the process of using wrap.py, and you can run wrap.py on it and see the
+output to better understand what's going on.
+
+All the stuff here will likely be moved to a separate file for reference.
 =============================================================================
 
 Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
