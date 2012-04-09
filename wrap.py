@@ -1215,8 +1215,8 @@ for opt, arg in opts:
     if opt == "-c": mpicc = arg
     if opt == "-i":
         if not arg in pmpi_init_bindings:
-            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(possible_bindings))
-            usage()
+            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(pmpi_init_bindings))
+            sys.exit(1)
         else:
             pmpi_init_binding = arg
     if opt == "-o":

@@ -1,9 +1,13 @@
 wrap:  a PMPI wrapper generator.
-
 https://github.com/tgamblin/wrap
 
+=============================================================================
+For a more thorough tutorial, look at example.w!
+All the stuff here will likely be moved to a separate file for reference
+=============================================================================
+
 Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
- Python script for creating PMPI wrappers. Roughly follows the syntax of 
+ Python script for creating PMPI wrappers. Roughly follows the syntax of
    the Argonne PMPI wrapper generator, with some enhancements.
  Options:"
    -d             Just dump function declarations parsed out of mpi.h
@@ -15,7 +19,7 @@ Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
                   Default is \'pmpi_init_\'.  Wrappers compiled for PIC will guess the
                   right binding automatically (use -DPIC when you compile dynamic libs).
    -o file        Send output to a file instead of stdout.
-   
+
  by Todd Gamblin, tgamblin@llnl.gov
 
 Thanks to these people for their suggestions and contributions:
@@ -25,10 +29,11 @@ Thanks to these people for their suggestions and contributions:
 Known Bugs:
   - Certain fortran bindings need some bugfixes and may not work.
 
-Wrapper file syntax:  
+Wrapper file syntax:
 
-Wrap syntax is a superset of the syntax defined in Appendix C of 
-the MPE manual [1].
+Wrap syntax is a superset of the syntax defined in Appendix C of
+the MPE manual [1], but many commands from the original wrapper
+generator are now deprecated.
 
 
 The following two macros generate skeleton wrappers and allow
@@ -48,18 +53,18 @@ named functions.
 
 
 	{{fnall}} defines a wrapper to be used on all functions except
-	the functions named.  fn is identical to fnall except that it 
+	the functions named.  fn is identical to fnall except that it
 	only generates wrappers for functions named explicitly.
 
 		{{fn FOO MPI_Abort}}
 		// Do-nothing wrapper for {{FOO}}
-		{{endfn}} 
+		{{endfn}}
 
 	generates (in part)
 
 		/* ================== C Wrappers for MPI_Abort ================== */
 		_EXTERN_C_ int PMPI_Abort(MPI_Comm arg_0, int arg_1);
-		_EXTERN_C_ int MPI_Abort(MPI_Comm arg_0, int arg_1) { 
+		_EXTERN_C_ int MPI_Abort(MPI_Comm arg_0, int arg_1) {
 		    int return_val = 0;
 
 		// Do-nothing wrapper for MPI_Abort
@@ -73,7 +78,7 @@ can use things like fn_name (or foo) and argTypeList, retType, argList, etc.
 
 They're not designed for making wrappers, but declarations of lots of variables
 and other things you need to declare per MPI function.  e.g., say you wanted a
-static variable per MPI call for some flag. 
+static variable per MPI call for some flag.
 
 {{forallfn <iterator variable name> <function A> <function B> ... }}
   // code here
@@ -82,7 +87,7 @@ static variable per MPI call for some flag.
 {foreachfn <iterator variable name> <function A> <function B> ... }}
   // code here
 {{endforeachfn}}
-	
+
 
 	The code between {{forallfn}} and {{endforallfn}} is copied once
 	for every function profiled, except for the functions listed.
@@ -102,9 +107,9 @@ static variable per MPI call for some flag.
 
 {{get_arg <argnum>}}  OR
 {{<argnum>}}
-	Arguments to the function being profiled may be referenced by 
+	Arguments to the function being profiled may be referenced by
 	number, starting with 0 and increasing.  e.g., in a wrapper file:
-  
+
   void process_argc_and_argv(int *argc, char ***argv) {
     // do stuff to argc and argv.
   }
@@ -116,27 +121,28 @@ static variable per MPI call for some flag.
 
   Note that {{0}} is just a synonym for {{get_arg 0}}
 
-{{returnVal}}
+{{ret_val}}
 	ReturnVal expands to the variable that is used to hold the return
-	value of the function being profiled.
+	value of the function being profiled.   (was: {{returnVal}})
 
 {{fn_num}}
 	This is a number, starting from zero.  It is incremented every time
 	it is used.
 
-{{retType}} 
-	The return type of the function.
+{{ret_type}}
+	The return type of the function. (was: {{retType}})
 
-{{argTypeList}} 
+{{formals}}
 	Essentially what would be in a formal declaration for the function.
-	Can be used this with forallfn and foreachfn; these don't generate 
+	Can be used this with forallfn and foreachfn; these don't generate
 	prototypes, they just iterate over the functions without making a skeleton.
+  (was: {{argTypeList}})
 
-{{args}} 
+{{args}}
 	Names of the arguments in a comma-separated list, e.g.:
   buf, type, count, comm
 
-{{argList}} 
+{{argList}}
 	Same as {{args}}, but with parentheses around the list, e.g.:
   (buf, type, count, comm)
 
@@ -144,7 +150,7 @@ static variable per MPI call for some flag.
   This macro must be nested inside either a fn or fnall block.
   Within the functions being wrapped by fn or fnall, this macro will apply <callable>
   to any arguments of the function with type <type>.
-  
+
   For example, you might write a wrapper file like this:
     #define my_macro(comm) do_something_to(comm);
 
@@ -152,10 +158,10 @@ static variable per MPI call for some flag.
         {{applyToType MPI_Comm my_macro}}
         {{callfn}}
     {{endfn}}
-  
+
   Now the generated wrappers to MPI_Send, MPI_Isend, and MPI_Ibsend will do something like this:
 
-    int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request) { 
+    int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request) {
       int _wrap_py_return_val = 0;
       my_macro(comm);
       PMPI_Isend(buf, count, datatype, dest, tag, comm, request);
@@ -177,22 +183,22 @@ static variable per MPI call for some flag.
 
   This will print NQJ_xxx instead of MPI_xxx for each MPI function.
 
-{{fileno}} 
-	An integral index representing which wrapper file the macro 
+{{fileno}}
+	An integral index representing which wrapper file the macro
 	came from.  This is useful when decalring file-global variables
-	to prevent name collisions.  Identifiers declared outside 
+	to prevent name collisions.  Identifiers declared outside
 	functions should end with _{{fileno}}.  For example:
 
 		static double overhead_time_{{fileno}};
-	
-	might expand to 
+
+	might expand to
 
 		static double overhead_time_0;
 
 
 NOTE: {{vardecl}} is not yet supported.
 {{vardecl <type> <arg> <arg> ...}}
-	Declare variables within a wrapper definition.  Wrap will decorate the 
+	Declare variables within a wrapper definition.  Wrap will decorate the
 	variable name to prevent collisions.
 
 
@@ -258,8 +264,8 @@ here, each XML tag would have a C wrapper function around it, which is
 probably NOT what you want.
 
 
-[1]  Anthony Chan, William Gropp and Weing Lusk.  User's Guide for MPE:  
-Extensions for MPI Programs.  ANL/MCS-TM-ANL-98/xx.  
+[1]  Anthony Chan, William Gropp and Weing Lusk.  User's Guide for MPE:
+Extensions for MPI Programs.  ANL/MCS-TM-ANL-98/xx.
 ftp://ftp.mcs.anl.gov/pub/mpi/mpeman.pdf
 
 
