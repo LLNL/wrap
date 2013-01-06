@@ -1216,7 +1216,6 @@ for opt, arg in opts:
     if opt == "-s": skip_headers = True
     if opt == "-g": output_guards = True
     if opt == "-c": mpicc = arg
-    if opt == "-o": output_filename = arg
     if opt == "-I":
         stripped = arg.strip()
         if stripped: includes.append(stripped)
