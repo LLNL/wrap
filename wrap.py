@@ -1205,7 +1205,7 @@ output = sys.stdout
 output_filename = None
 
 try:
-    opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdc:o:i:")
+    opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdc:o:i:I:")
 except getopt.GetoptError, err:
     sys.stderr.write(err + "\n")
     usage()
@@ -1239,7 +1239,7 @@ if len(args) < 1 and not dump_prototypes:
 #
 # Parse mpi.h and put declarations into a map.
 #
-for decl in enumerate_mpi_declarations(mpicc):
+for decl in enumerate_mpi_declarations(mpicc,includes):
     mpi_functions[decl.name] = decl
     if dump_prototypes: print decl
 
