@@ -1,10 +1,8 @@
 wrap.py
 ===========================
-a [PMPI](http://www.open-mpi.org/faq/?category=perftools#PMPI) wrapper generator.
- by Todd Gamblin, tgamblin@llnl.gov
-https://github.com/tgamblin/wrap
-All the stuff here will likely be moved to a separate file for reference.
+a [PMPI](http://www.open-mpi.org/faq/?category=perftools#PMPI) wrapper generator
 
+by Todd Gamblin, tgamblin@llnl.gov, https://github.com/tgamblin/wrap
 
     Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
      Python script for creating PMPI wrappers. Roughly follows the syntax of
