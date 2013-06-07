@@ -38,8 +38,7 @@ usage_string = \
    -d             Just dump function declarations parsed out of mpi.h
    -f             Generate fortran wrappers in addition to C wrappers.
    -g             Generate reentry guards around wrapper functions.
-   -s             Skip writing #includes, #defines, #line, and other C constructs in output
-                  (for non-C output)
+   -s             Skip writing #includes, #defines, and other front-matter (for non-C output).
    -c exe         Provide name of MPI compiler (for parsing mpi.h).  Default is \'mpicc\'.
    -i pmpi_init   Specify proper binding for the fortran pmpi_init function.
                   Default is \'pmpi_init_\'.  Wrappers compiled for PIC will guess the
@@ -55,7 +54,7 @@ mpicc = 'mpicc'                    # Default name for the MPI compiler
 pmpi_init_binding = "pmpi_init_"   # Default binding for pmpi_init
 output_fortran_wrappers = False    # Don't print fortran wrappers by default
 output_guards = False              # Don't print reentry guards by default
-non_c_output = False               # Skip header information and defines (for non-C output)
+skip_headers = False               # Skip header information and defines (for non-C output)
 dump_prototypes = False            # Just exit and dump MPI protos if false.
 
 # Possible legal bindings for the fortran version of PMPI_Init()
@@ -205,7 +204,7 @@ class LineTrackingLexer(object):
         return token
 
     def lex(self, text):
-        self.line_no = 1
+        self.line_no = 0
         tokens, remainder = self.scanner.scan(text)
         if remainder:
             sys.stderr.write("Unlexable input:\n%s\n" % remainder)
@@ -1015,7 +1014,6 @@ class Chunk:
         self.args     = []
         self.text     = None
         self.children = []
-        self.line     = 0
 
     def iwrite(self, file, level, text):
         """Write indented text."""
@@ -1029,17 +1027,12 @@ class Chunk:
         for child in self.children:
             child.write(file, l+1)
 
-    def write_line(self, out):
-        if not non_c_output:
-            out.write('\n#line %d "%s"\n' % (self.line, cur_filename))
-
     def execute(self, out, scope):
         """This function executes a chunk.  For strings, lists, text chunks, etc., this just
            entails returning the chunk's value.  For callable macros, this executes and returns
            the chunk's value.
         """
         if not self.macro:
-            self.write_line(out)
             out.write(self.text)
         else:
             if not self.macro in scope:
@@ -1079,9 +1072,7 @@ class Chunk:
         """
         value = self.execute(out, scope)
         if value is not None:  # Note the distinction here -- 0 is false but we want to print it!
-            self.write_line(out)
             out.write(self.stringify(value))
-
 
 class Parser:
     """Parser for the really simple wrappergen grammar.
@@ -1097,7 +1088,6 @@ class Parser:
         self.tokens = iter([]) # iterators over tokens, handled in order.  Starts empty.
         self.token = None      # last accepted token
         self.next = None       # next token
-        self.line = 1          # current line in input file.
 
     def gettok(self):
         """Puts the next token in the input stream into self.next."""
@@ -1115,7 +1105,6 @@ class Parser:
         """Puts the next symbol in self.token if we like it.  Then calls gettok()"""
         if self.next.isa(id):
             self.token = self.next
-            self.line = self.token.line
             self.gettok()
             return True
         return False
@@ -1147,8 +1136,6 @@ class Parser:
 
         # Now proceed with parsing the macro language's tokens
         chunk = Chunk()
-        chunk.line = self.line
-
         self.expect(IDENTIFIER)
         chunk.macro = self.token.value
 
@@ -1173,7 +1160,6 @@ class Parser:
         while self.next:
             if self.accept(TEXT):
                 chunk = Chunk()
-                chunk.line = self.line
                 chunk.text = self.token.value
                 chunks.append(chunk)
             elif self.accept(LBRACE):
@@ -1196,7 +1182,7 @@ class Parser:
         return chunks
 
     def parse(self, text):
-        if non_c_output:
+        if skip_headers:
             outer_lexer = OuterRegionLexer()   # Not generating C code, text is text.
         else:
             outer_lexer = OuterCommentLexer()  # C code. Considers C-style comments.
@@ -1224,7 +1210,7 @@ except getopt.GetoptError, err:
 for opt, arg in opts:
     if opt == "-d": dump_prototypes = True
     if opt == "-f": output_fortran_wrappers = True
-    if opt == "-s": non_c_output = True
+    if opt == "-s": skip_headers = True
     if opt == "-g": output_guards = True
     if opt == "-c": mpicc = arg
     if opt == "-i":
@@ -1255,7 +1241,7 @@ for decl in enumerate_mpi_declarations(mpicc):
 if dump_prototypes: sys.exit(0)
 
 # Start with some headers and definitions.
-if not non_c_output:
+if not skip_headers:
     output.write(wrapper_includes)
     if output_guards: output.write("static int in_wrapper = 0;\n")
 
