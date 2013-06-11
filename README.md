@@ -34,7 +34,7 @@ Known Bugs:
 
 Tutorial
 -----------------------------
-For a thorough tutorial, look at `example.w`!  It walks you through
+For a thorough tutorial, look at `examples/tutorial.w`!  It walks you through
 the process of using `wrap.py`.  It is also legal `wrap.py` code, so you
 can run `wrap.py` on it and see the output to better understand what's
 going on.
