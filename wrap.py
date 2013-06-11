@@ -40,6 +40,7 @@ usage_string = \
    -g             Generate reentry guards around wrapper functions.
    -s             Skip writing #includes, #defines, and other front-matter (for non-C output).
    -c exe         Provide name of MPI compiler (for parsing mpi.h).  Default is \'mpicc\'.
+   -I dir         Provide an extra include directory to use when parsing mpi.h.
    -i pmpi_init   Specify proper binding for the fortran pmpi_init function.
                   Default is \'pmpi_init_\'.  Wrappers compiled for PIC will guess the
                   right binding automatically (use -DPIC when you compile dynamic libs).
@@ -51,6 +52,7 @@ import tempfile, getopt, subprocess, sys, os, re, StringIO, types, itertools
 
 # Default values for command-line parameters
 mpicc = 'mpicc'                    # Default name for the MPI compiler
+includes = []                      # Default set of directories to inlucde when parsing mpi.h
 pmpi_init_binding = "pmpi_init_"   # Default binding for pmpi_init
 output_fortran_wrappers = False    # Don't print fortran wrappers by default
 output_guards = False              # Don't print reentry guards by default
@@ -67,7 +69,7 @@ pmpi_init_bindings = ["PMPI_INIT", "pmpi_init", "pmpi_init_", "pmpi_init__"]
 rtypes = ['int', 'double' ]
 
 # If we find these strings in a declaration, exclude it from consideration.
-exclude_strings = [ "c2f", "f2c" ]
+exclude_strings = [ "c2f", "f2c", "typedef" ]
 
 # Regular expressions for start and end of declarations in mpi.h. These are
 # used to get the declaration strings out for parsing with formal_re below.
@@ -472,7 +474,7 @@ class Declaration:
 types = set()
 all_pointers = set()
 
-def enumerate_mpi_declarations(mpicc):
+def enumerate_mpi_declarations(mpicc, includes):
     """ Invokes mpicc's C preprocessor on a C file that includes mpi.h.
         Parses the output for declarations, and yields each declaration to
         the caller.
@@ -486,7 +488,8 @@ def enumerate_mpi_declarations(mpicc):
 
     # Run the mpicc -E on the temp file and pipe the output
     # back to this process for parsing.
-    mpicc_cmd = "%s -E" % mpicc
+    string_includes = ["-I"+dir for dir in includes]
+    mpicc_cmd = "%s -E %s" % (mpicc, " ".join(string_includes))
     try:
         popen = subprocess.Popen("%s %s" % (mpicc_cmd, tmpname), shell=True,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -538,10 +541,11 @@ def enumerate_mpi_declarations(mpicc):
 
             yield decl
 
-    error_status = mpi_h.close()
-    if (error_status):
+    mpi_h.close()
+    return_code = popen.wait()
+    if return_code != 0:
         sys.stderr.write("Error: Couldn't run '%s' for parsing mpi.h.\n" % mpicc_cmd)
-        sys.stderr.write("       Process exited with code %d.\n" % error_status)
+        sys.stderr.write("       Process exited with code %d.\n" % return_code)
         sys.exit(1)
 
     # Do some cleanup once we're done reading.
@@ -1202,7 +1206,7 @@ output = sys.stdout
 output_filename = None
 
 try:
-    opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdc:o:i:")
+    opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdc:o:i:I:")
 except getopt.GetoptError, err:
     sys.stderr.write(err + "\n")
     usage()
@@ -1213,41 +1217,49 @@ for opt, arg in opts:
     if opt == "-s": skip_headers = True
     if opt == "-g": output_guards = True
     if opt == "-c": mpicc = arg
+    if opt == "-o": output_filename = arg
+    if opt == "-I":
+        stripped = arg.strip()
+        if stripped: includes.append(stripped)
     if opt == "-i":
         if not arg in pmpi_init_bindings:
-            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(pmpi_init_bindings))
-            sys.exit(1)
+            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(possible_bindings))
+            usage()
         else:
             pmpi_init_binding = arg
-    if opt == "-o":
-        try:
-            output_filename = arg
-            output = open(output_filename, "w")
-        except IOError:
-            sys.stderr.write("Error: couldn't open file " + arg + " for writing.\n")
-            sys.exit(1)
 
 if len(args) < 1 and not dump_prototypes:
     usage()
 
-#
 # Parse mpi.h and put declarations into a map.
-#
-for decl in enumerate_mpi_declarations(mpicc):
+for decl in enumerate_mpi_declarations(mpicc, includes):
     mpi_functions[decl.name] = decl
     if dump_prototypes: print decl
+
+# Fail gracefully if we didn't find anything.
+if not mpi_functions:
+    sys.stderr.write("Error: Found no declarations in mpi.h.\n")
+    sys.exit(1)
 
 # If we're just dumping prototypes, we can just exit here.
 if dump_prototypes: sys.exit(0)
 
-# Start with some headers and definitions.
-if not skip_headers:
-    output.write(wrapper_includes)
-    if output_guards: output.write("static int in_wrapper = 0;\n")
+# Open the output file here if it was specified
+if output_filename:
+    try:
+        output = open(output_filename, "w")
+    except IOError:
+        sys.stderr.write("Error: couldn't open file " + arg + " for writing.\n")
+        sys.exit(1)
 
-# Parse each file listed on the command line and execute
-# it once it's parsed.
 try:
+    # Start with some headers and definitions.
+    if not skip_headers:
+        output.write(wrapper_includes)
+        if output_guards: output.write("static int in_wrapper = 0;\n")
+
+    # Parse each file listed on the command line and execute
+    # it once it's parsed.
     fileno = 0
     for f in args:
         cur_filename = f
