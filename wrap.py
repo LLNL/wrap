@@ -150,6 +150,31 @@ mpi_array_calls = {
 }
 
 
+def find_matching_paren(string, index, lparen='(', rparen=')'):
+    """Find the closing paren corresponding to the open paren at <index>
+       in <string>.  Optionally, can provide other characters to match on.
+       If found, returns the index of the matching parenthesis.  If not found,
+       returns -1.
+    """
+    if not string[index] == lparen:
+        raise ValueError("Character at index %d is '%s'. Expected '%s'"
+                         % (index, string[index], lparen))
+    index += 1
+    count = 1
+    while index < len(string) and count > 0:
+        while index < len(string) and string[index] not in (lparen, rparen):
+            index += 1
+        if string[index] == lparen:
+            count += 1
+        elif string[index] == rparen:
+            count -= 1
+
+    if count == 0:
+        return index
+    else:
+        return -1
+
+
 def isindex(str):
     """True if a string is something we can index an array with."""
     try:
@@ -511,7 +536,14 @@ def enumerate_mpi_declarations(mpicc, includes):
                 line += " " + mpi_h.next().strip()
 
             # Split args up by commas so we can parse them independently
-            arg_string = re.search(fn_name + "\s*\((.*)\)", line).group(1)
+            fn_and_paren = r'(%s\s*\()' % fn_name
+            match = re.search(fn_and_paren, line)
+            lparen = match.start(1) + len(match.group(1)) - 1
+            rparen = find_matching_paren(line, lparen)
+            if rparen < 0:
+                raise ValueError("Malformed declaration in header: '%s'" % line)
+
+            arg_string = line[lparen+1:rparen]
             arg_list = map(lambda s: s.strip(), arg_string.split(","))
 
             # Handle functions that take no args specially
