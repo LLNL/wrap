@@ -850,6 +850,7 @@ def include_decl(scope, decl):
     """This function is used by macros to include attributes MPI declarations in their scope."""
     scope["ret_type"] = decl.retType()
     scope["args"]     = decl.argNames()
+    scope["nargs"]    = len(decl.argNames())
     scope["types"]    = decl.types()
     scope["formals"]  = decl.formals()
     scope["apply_to_type"] = TypeApplier(decl)
