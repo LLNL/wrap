@@ -1,5 +1,5 @@
 /// -*- c++ -*-
-/// Example wrapper script for wrap.py
+/// Tutorial wrapper script for wrap.py
 /// by Todd Gamblin tgamblin@llnl.gov
 ///
 /// This shows sample usage of many of the builtin macros in the wrapper generator.

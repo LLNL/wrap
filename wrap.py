@@ -377,6 +377,31 @@ def find_matching_paren(string, index, lparen='(', rparen=')'):
         return -1
 
 
+def find_matching_paren(string, index, lparen='(', rparen=')'):
+    """Find the closing paren corresponding to the open paren at <index>
+       in <string>.  Optionally, can provide other characters to match on.
+       If found, returns the index of the matching parenthesis.  If not found,
+       returns -1.
+    """
+    if not string[index] == lparen:
+        raise ValueError("Character at index %d is '%s'. Expected '%s'"
+                         % (index, string[index], lparen))
+    index += 1
+    count = 1
+    while index < len(string) and count > 0:
+        while index < len(string) and string[index] not in (lparen, rparen):
+            index += 1
+        if string[index] == lparen:
+            count += 1
+        elif string[index] == rparen:
+            count -= 1
+
+    if count == 0:
+        return index
+    else:
+        return -1
+
+
 def isindex(str):
     """True if a string is something we can index an array with."""
     try:
@@ -1812,7 +1837,6 @@ if static_dir:
 if len(args) < 1 and not dump_prototypes:
     usage()
 
-#
 # Parse mpi.h and put declarations into a map.
 #
 for decl in enumerate_mpi_declarations(mpicc,includes):
@@ -1840,10 +1864,14 @@ if not skip_headers:
         else:
             output.write("static int in_wrapper = 0;\n")
     
-
-# Parse each file listed on the command line and execute
-# it once it's parsed.
 try:
+    # Start with some headers and definitions.
+    if not skip_headers:
+        output.write(wrapper_includes)
+        if output_guards: output.write("static int in_wrapper = 0;\n")
+
+    # Parse each file listed on the command line and execute
+    # it once it's parsed.
     fileno = 0
     for f in args:
         cur_filename = f
