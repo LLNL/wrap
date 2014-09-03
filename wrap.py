@@ -1851,24 +1851,19 @@ if not mpi_functions:
 # If we're just dumping prototypes, we can just exit here.
 if dump_prototypes: sys.exit(0)
 
-# Start with some headers and definitions.
-if not skip_headers:
-    output.write(wrapper_includes)
-    if output_fortran_wrappers:
-        output.write(fortran_wrapper_includes)
-    if not static_dir:
-        output.write(wrapper_main_pmpi_init_decls)
-    if output_guards:
-        if static_dir:
-            output.write("int in_wrapper = 0;\n")
-        else:
-            output.write("static int in_wrapper = 0;\n")
-    
 try:
     # Start with some headers and definitions.
     if not skip_headers:
         output.write(wrapper_includes)
-        if output_guards: output.write("static int in_wrapper = 0;\n")
+        if output_guards: 
+            if static_dir:
+                output.write("int in_wrapper = 0;\n")
+            else:
+                output.write("static int in_wrapper = 0;\n")
+        if output_fortran_wrappers:
+            output.write(fortran_wrapper_includes)
+        if not static_dir:
+            output.write(wrapper_main_pmpi_init_decls)
 
     # Parse each file listed on the command line and execute
     # it once it's parsed.
