@@ -10,8 +10,6 @@ cmake_minimum_required(VERSION 2.8)
 
 # Install wrap.py into the project binary directory
 install(PROGRAMS wrap.py DESTINATION bin)
-install(PROGRAMS makefortran.py DESTINATION bin)
-install(FILES mpi-f77.txt DESTINATION share/wrap)
 # Install WrapConfig into the project CMake config directory so that
 # wrap.py can be used by subprojects.
 set(WRAP ${CMAKE_INSTALL_PREFIX}/bin/wrap.py)
