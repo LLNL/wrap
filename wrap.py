@@ -1814,7 +1814,7 @@ for opt, arg in opts:
             usage()
         else:
             pmpi_init_binding = arg
-            pmpi_init_thread_binding = arg.replace('mpi_init', 'mpi_ini_thread').replace('MPI_INIT', 'MPI_INIT_THREAD')
+            pmpi_init_thread_binding = arg.replace('mpi_init', 'mpi_init_thread').replace('MPI_INIT', 'MPI_INIT_THREAD')
     if opt == "-o":
         try:
             output_filename = arg
