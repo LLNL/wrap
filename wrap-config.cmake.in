@@ -21,7 +21,9 @@ if (NOT Wrap_CONFIG_LOADED)
   set(Wrap_CONFIG_LOADED TRUE)
 
   # This variable allows users to use the wrap.py script directly, if desired.
-  set(Wrap_EXECUTABLE @WRAP@)
+  set(Wrap_EXECUTABLE @WRAP@ CACHE STRING "Wrap: executable")
+
+  set(Wrap_EXTRA_SOURCE @GETSTATUSSIZE@  CACHE STRING "Wrap: extra source code")
 
   # add_wrapped_file(file_name wrapper_name [flags])
   # 	
