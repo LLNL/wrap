@@ -126,7 +126,7 @@ _EXTERN_C_ void *MPIR_ToPointer(int);
 #define MPI_F_STATUS_SIZE MPI_STATUS_SIZE
 #else
 void get_mpi_f_status_size___(int*);
-inline int __get_f_status_size(){int size; get_mpi_f_status_size___(&size); return size;}
+static inline int __get_f_status_size(){int size; get_mpi_f_status_size___(&size); return size;}
 #define MPI_F_STATUS_SIZE __get_f_status_size()
 #endif
 
