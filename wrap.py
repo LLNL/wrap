@@ -74,7 +74,7 @@ pmpi_init_thread_bindings = ["PMPI_INIT_THREAD", "pmpi_init_thread", "pmpi_init_
 rtypes = ['int', 'double', 'MPI_Aint' ]
 
 # If we find these strings in a declaration, exclude it from consideration.
-exclude_strings = [ "c2f", "f2c", "typedef", "MPI_T_" ]
+exclude_strings = [ "c2f", "f2c", "typedef", "MPI_T_", "MPI_Comm_spawn" ]
 
 # Regular expressions for start and end of declarations in mpi.h. These are
 # used to get the declaration strings out for parsing with formal_re below.
