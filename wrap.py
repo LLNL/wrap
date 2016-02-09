@@ -219,25 +219,25 @@ _EXTERN_C_ void *MPI_F_MPI_BOTTOM WEAK_POSTFIX;
 _EXTERN_C_ void *MPI_F_MPI_IN_PLACE WEAK_POSTFIX;
 
 /* MPICH 2 requires no special handling - MPI_BOTTOM may (must!) be passed through as-is. */
-#define IsBottom(x) ((x) == (void *) &mpi_fortran_bottom || \
-                     (x) == (void *) &MPI_FORTRAN_BOTTOM || \
-                     (x) == (void *) &mpi_fortran_bottom_ || \
-                     (x) == (void *) &MPI_FORTRAN_BOTTOM_ || \
-                     (x) == (void *) &mpi_fortran_bottom__ || \
+#define IsBottom(x) ((x) == (void *) &mpi_fortran_bottom ||   \\
+                     (x) == (void *) &MPI_FORTRAN_BOTTOM ||   \\
+                     (x) == (void *) &mpi_fortran_bottom_ ||  \\
+                     (x) == (void *) &MPI_FORTRAN_BOTTOM_ ||  \\
+                     (x) == (void *) &mpi_fortran_bottom__ || \\
                      (x) == (void *) &MPI_FORTRAN_BOTTOM__)
-#define IsInPlace(x) ((x) == (void *) &mpi_fortran_in_place || \
-                      (x) == (void *) &MPI_FORTRAN_IN_PLACE || \
-                      (x) == (void *) &mpi_fortran_in_place_ || \
-                      (x) == (void *) &MPI_FORTRAN_IN_PLACE_ || \
-                      (x) == (void *) &mpi_fortran_in_place__ || \
-                      (x) == (void *) &MPI_FORTRAN_IN_PLACE__ || \
-                      (x) == (void *) &MPIFCMB4 || \
-                      (x) == (void *) &mpifcmb4 || \
-                      (x) == (void *) &MPIFCMB4_ || \
-                      (x) == (void *) &mpifcmb4_ || \
-                      (x) == (void *) &MPIFCMB4__ || \
-                      (x) == (void *) &mpifcmb4__ || \
-                      (x) == MPIR_F_MPI_IN_PLACE || \
+#define IsInPlace(x) ((x) == (void *) &mpi_fortran_in_place ||   \\
+                      (x) == (void *) &MPI_FORTRAN_IN_PLACE ||   \\
+                      (x) == (void *) &mpi_fortran_in_place_ ||  \\
+                      (x) == (void *) &MPI_FORTRAN_IN_PLACE_ ||  \\
+                      (x) == (void *) &mpi_fortran_in_place__ || \\
+                      (x) == (void *) &MPI_FORTRAN_IN_PLACE__ || \\
+                      (x) == (void *) &MPIFCMB4 ||               \\
+                      (x) == (void *) &mpifcmb4 ||               \\
+                      (x) == (void *) &MPIFCMB4_ ||              \\
+                      (x) == (void *) &mpifcmb4_ ||              \\
+                      (x) == (void *) &MPIFCMB4__ ||             \\
+                      (x) == (void *) &mpifcmb4__ ||             \\
+                      (x) == MPIR_F_MPI_IN_PLACE ||              \\
                       (x) == MPI_F_MPI_IN_PLACE)
 
 #ifdef USE_WEAK_PRAGMA
