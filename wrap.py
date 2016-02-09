@@ -283,6 +283,14 @@ _EXTERN_C_ void *MPI_F_MPI_IN_PLACE WEAK_POSTFIX;
 #define BufferC2F(x) (x)
 #endif /* defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__PGI) || defined(_CRAYC) */
 
+
+#ifndef WRAP_MPI_CALL_PREFIX
+#define WRAP_MPI_CALL_PREFIX
+#endif
+
+#ifndef WRAP_MPI_CALL_POSTFIX
+#define WRAP_MPI_CALL_POSTFIX
+#endif
 '''
 
 wrapper_main_pmpi_init_decls ='''
@@ -1018,17 +1026,23 @@ class FortranDelegation:
             out.write(mpich_call)
         else:
             out.write("#if (!defined(MPICH_HAS_C2F) && defined(MPICH_NAME) && (MPICH_NAME == 1)) /* MPICH test */\n")
+            out.write("WRAP_MPI_CALL_PREFIX\n")
             out.write(mpich_call)
+            out.write("WRAP_MPI_CALL_POSTFIX\n")
             out.write("#else /* MPI-2 safe call */\n")
             out.write(joinlines(self.temps))
             if mpich_c2f_call != mpi2_call:
                 out.write("# if defined(MPICH_NAME) && (MPICH_NAME == 1) /* MPICH test */\n")
                 out.write(joinlines(self.mpich_c2f_copies))
+                out.write("WRAP_MPI_CALL_PREFIX\n")
                 out.write(mpich_c2f_call)
+                out.write("WRAP_MPI_CALL_POSTFIX\n")
                 out.write(joinlines(self.mpich_c2f_writebacks))
                 out.write("# else /* MPI-2 safe call */\n")
             out.write(joinlines(self.copies))
+            out.write("WRAP_MPI_CALL_PREFIX\n")
             out.write(mpi2_call)
+            out.write("WRAP_MPI_CALL_POSTFIX\n")
             out.write(joinlines(self.writebacks))
             if mpich_c2f_call != mpi2_call:
                 out.write("# endif /* MPICH test */\n")
