@@ -284,12 +284,12 @@ _EXTERN_C_ void *MPI_F_MPI_IN_PLACE WEAK_POSTFIX;
 #endif /* defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__PGI) || defined(_CRAYC) */
 
 
-#ifndef WRAP_MPI_CALL_PREFIX
-#define WRAP_MPI_CALL_PREFIX
-#endif
+#ifdef __clang__
+#define WRAP_MPI_CALL_PREFIX        \\
+  _Pragma("clang diagnostic push"); \\
+  _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
 
-#ifndef WRAP_MPI_CALL_POSTFIX
-#define WRAP_MPI_CALL_POSTFIX
+#define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
 #endif
 '''
 
@@ -1250,7 +1250,10 @@ def write_fortran_wrappers(out, decl, return_val):
     if decl.hasArrayIndexOutputParam():
         call.addWriteback("}")
 
+    out.write("WRAP_MPI_CALL_PREFIX\n")
     call.write(out)
+    out.write("WRAP_MPI_CALL_POSTFIX\n")
+
     if decl.returnsErrorCode():
         out.write("    *ierr = %s;\n" % return_val)
     else:
