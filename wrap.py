@@ -290,6 +290,9 @@ _EXTERN_C_ void *MPI_F_MPI_IN_PLACE WEAK_POSTFIX;
   _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
 
 #define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
+#else
+#define WRAP_MPI_CALL_PREFIX
+#define WRAP_MPI_CALL_POSTFIX
 #endif
 '''
 
