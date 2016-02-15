@@ -114,7 +114,16 @@ wrapper_includes = '''
 #endif /* _EXTERN_C_ */
 
 
+#ifdef __clang__
+#define WRAP_MPI_CALL_PREFIX        \\
+  _Pragma("clang diagnostic push"); \\
+  _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
 
+#define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
+#else
+#define WRAP_MPI_CALL_PREFIX
+#define WRAP_MPI_CALL_POSTFIX
+#endif
 '''
 
 fortran_wrapper_includes = '''
@@ -282,18 +291,6 @@ _EXTERN_C_ void *MPI_F_MPI_IN_PLACE WEAK_POSTFIX;
 #else
 #define BufferC2F(x) (x)
 #endif /* defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__PGI) || defined(_CRAYC) */
-
-
-#ifdef __clang__
-#define WRAP_MPI_CALL_PREFIX        \\
-  _Pragma("clang diagnostic push"); \\
-  _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
-
-#define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
-#else
-#define WRAP_MPI_CALL_PREFIX
-#define WRAP_MPI_CALL_POSTFIX
-#endif
 '''
 
 wrapper_main_pmpi_init_decls ='''
