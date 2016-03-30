@@ -114,12 +114,18 @@ wrapper_includes = '''
 #endif /* _EXTERN_C_ */
 
 
-#ifdef __clang__
+#if defined(__clang__)
 #define WRAP_MPI_CALL_PREFIX        \\
   _Pragma("clang diagnostic push"); \\
   _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
-
 #define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
+
+#elif defined(__GNUC__)
+#define WRAP_MPI_CALL_PREFIX      \\
+  _Pragma("GCC diagnostic push"); \\
+  _Pragma("GCC diagnostic ignored \\"-Wdeprecated-declarations\\"");
+#define WRAP_MPI_CALL_POSTFIX _Pragma("GCC diagnostic pop");
+
 #else
 #define WRAP_MPI_CALL_PREFIX
 #define WRAP_MPI_CALL_POSTFIX
