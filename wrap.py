@@ -114,13 +114,13 @@ wrapper_includes = '''
 #endif /* _EXTERN_C_ */
 
 
-#if defined(__clang__)
+#if defined(__clang__) && defined(WRAP_DISABLE_MPI_DEPRECATION_WARNINGS)
 #define WRAP_MPI_CALL_PREFIX        \\
   _Pragma("clang diagnostic push"); \\
   _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
 #define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
 
-#elif defined(__GNUC__)
+#elif defined(__GNUC__) && defined(WRAP_DISABLE_MPI_DEPRECATION_WARNINGS)
 #define WRAP_MPI_CALL_PREFIX      \\
   _Pragma("GCC diagnostic push"); \\
   _Pragma("GCC diagnostic ignored \\"-Wdeprecated-declarations\\"");
