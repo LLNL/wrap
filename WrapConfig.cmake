@@ -53,9 +53,29 @@ if (NOT Wrap_CONFIG_LOADED)
         set(wrap_includes ${wrap_includes} -I ${include})
       endforeach()
     endif()
-    set(wrap_compiler   -c ${CMAKE_C_COMPILER})
-    if (MPI_C_COMPILER)
-      set(wrap_compiler -c ${MPI_C_COMPILER})
+    # Detect the source code language
+    set(wrap_lang C)
+    get_filename_component(src_ext ${file_name} EXT)
+    foreach(cppext .cpp .cxx .cc .C .hpp)
+      if ("${src_ext}" STREQUAL "${cppext}")
+        set(wrap_lang CXX)
+      endif()
+    endforeach(cppext)
+    if ("${src_ext}" MATCHES ".[Ff][0-9][0-9]")
+      set(wrap_lang Fortran)
+    endif()
+    foreach(fext .f .for .ftn .fpp .F .FOR .FTN .FPP)
+      if ("${src_ext}" STREQUAL "${fext}")
+        set(wrap_lang Fortran)
+      endif()
+    endforeach(fext)
+    if (CMAKE_${wrap_lang}_COMPILER)
+      set(wrap_compiler   -c ${CMAKE_${wrap_lang}_COMPILER})
+    else()
+      set(wrap_compiler   -c ${CMAKE_C_COMPILER})
+    endif()
+    if (MPI_${wrap_lang}_COMPILER)
+      set(wrap_compiler -c ${MPI_${wrap_lang}_COMPILER})
     endif()
 
     if (ARGN)
@@ -83,7 +103,7 @@ if (NOT Wrap_CONFIG_LOADED)
       ARGS    ${script_arg} ${wrap_compiler} ${wrap_includes} ${wrap_flags} ${wrapper_path} -o ${file_path}
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       DEPENDS ${wrapper_path}
-      COMMENT "Generating ${file_name} from ${wrapper_name}"
+      COMMENT "Generating ${wrap_lang} code for ${file_name} from ${wrapper_name}"
       VERBATIM)
 
     # Add generated files to list of things to be cleaned for the directory.
