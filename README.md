@@ -85,44 +85,48 @@ generator are now deprecated.
 The following two macros generate skeleton wrappers and allow
 delegation via `{{callfn}}`:
 
-* `fn` iterates over only the listed
-functions.
-* `fnall` iterates over all functions *minus* the named functions.
+* `fn` iterates over only the listed functions.
 
-    {{fnall <iterator variable name> <function A> <function b> ... }}
-      // code here
-    {{endfnall}}
-
+    ```
     {{fn <iterator variable name> <function A> <function B> ... }}
     {{endfn}
+    ```
 
-    {{callfn}}
-
-`callfn` expands to the call of the function being profiled.
-
-`fnall` defines a wrapper to be used on all functions except the functions named.  fn is identical to fnall except that it only generates wrappers for functions named explicitly.
-
+    Example:
+    ```
     {{fn FOO MPI_Abort}}
     	// Do-nothing wrapper for {{FOO}}
     {{endfn}}
-
-generates (in part):
-
+    ```
+    ```
     /* ================== C Wrappers for MPI_Abort ================== */
-    _EXTERN_C_ int PMPI_Abort(MPI_Comm arg_0, int arg_1);
-    _EXTERN_C_ int MPI_Abort(MPI_Comm arg_0, int arg_1) {
-        int return_val = 0;
+    _EXTERN_C_ int PMPI_Abort(MPI_Comm comm, int errorcode);
+    _EXTERN_C_ int MPI_Abort(MPI_Comm comm, int errorcode)
+    {
+      int _wrap_py_return_val = 0;
 
-    // Do-nothing wrapper for MPI_Abort
-        return return_val;
+      // Do-nothing wrapper for MPI_Abort
+      return _wrap_py_return_val;
     }
+    ```
 
-`foreachfn` and `forallfn` are the counterparts of `fn` and `fnall`, but they don't generate the
+* `fnall` iterates over all functions *minus* the named functions.
+
+    ```
+    {{fnall <iterator variable name> <function A> <function b> ... }}
+      // code here
+    {{endfnall}}
+    ```
+
+* `callfn` expands to the call of the function being profiled.
+
+* `foreachfn` and `forallfn` are the counterparts of `fn` and `fnall`, but they don't generate the
 skeletons (and therefore you can't delegate with `{{callfn}}`).  However, you
 can use things like `fn_name` (or `foo`) and `argTypeList`, `retType`, `argList`, etc.
 
 They're not designed for making wrappers, but declarations of lots of variables and other things you need to declare per MPI function.  e.g., say you wanted a static variable per MPI call for some flag.
 
+    ```
     {{forallfn <iterator variable name> <function A> <function B> ... }}
       // code here
     {{endforallfn}
@@ -130,23 +134,21 @@ They're not designed for making wrappers, but declarations of lots of variables 
     {foreachfn <iterator variable name> <function A> <function B> ... }}
       // code here
     {{endforeachfn}}
+    ```
 
+    The code between {{forallfn}} and {{endforallfn}} is copied once for every function profiled, except for the functions listed.
 
-The code between {{forallfn}} and {{endforallfn}} is copied once
-for every function profiled, except for the functions listed.
-For example:
-
+	For example:
+    ```
     {{forallfn fn_name}}
       static int {{fn_name}}_ncalls_{{fileno}};
     {{endforallfn}}
-
-might expand to:
-
+    ```
+    might expand to:
+    ```
     static int MPI_Send_ncalls_1;
     static int MPI_Recv_ncalls_1;
-    ...
-
-etc.
+    ```
 
 * `{{get_arg <argnum>}}` OR `{{<argnum>}}`
 	Arguments to the function being profiled may be referenced by
@@ -199,7 +201,7 @@ etc.
             {{callfn}}
         {{endfn}}
 
-Now the generated wrappers to `MPI_Send`, `MPI_Isend`, and `MPI_Ibsend` will do something like this:
+    Now the generated wrappers to `MPI_Send`, `MPI_Isend`, and `MPI_Ibsend` will do something like this:
 
     int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request) {
       int _wrap_py_return_val = 0;
@@ -308,5 +310,3 @@ which is probably NOT what you want.
 1. Anthony Chan, William Gropp and Weing Lusk.  *User's Guide for MPE:
 Extensions for MPI Programs*.  ANL/MCS-TM-ANL-98/xx.
 ftp://ftp.mcs.anl.gov/pub/mpi/mpeman.pdf
-
-
