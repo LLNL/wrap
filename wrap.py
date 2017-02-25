@@ -71,10 +71,10 @@ pmpi_init_thread_bindings = ["PMPI_INIT_THREAD", "pmpi_init_thread", "pmpi_init_
 # In general, all MPI calls we care about return int.  We include double
 # to grab MPI_Wtick and MPI_Wtime, but we'll ignore the f2c and c2f calls
 # that return MPI_Datatypes and other such things.
-rtypes = ['int', 'double' ]
+rtypes = ['int', 'double', 'MPI_Aint' ]
 
 # If we find these strings in a declaration, exclude it from consideration.
-exclude_strings = [ "c2f", "f2c", "typedef" ]
+exclude_strings = [ "c2f", "f2c", "typedef", "MPI_T_", "MPI_Comm_spawn" ]
 
 # Regular expressions for start and end of declarations in mpi.h. These are
 # used to get the declaration strings out for parsing with formal_re below.
@@ -114,7 +114,22 @@ wrapper_includes = '''
 #endif /* _EXTERN_C_ */
 
 
+#if defined(__clang__) && defined(WRAP_DISABLE_MPI_DEPRECATION_WARNINGS)
+#define WRAP_MPI_CALL_PREFIX        \\
+  _Pragma("clang diagnostic push"); \\
+  _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
+#define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
 
+#elif defined(__GNUC__) && defined(WRAP_DISABLE_MPI_DEPRECATION_WARNINGS)
+#define WRAP_MPI_CALL_PREFIX      \\
+  _Pragma("GCC diagnostic push"); \\
+  _Pragma("GCC diagnostic ignored \\"-Wdeprecated-declarations\\"");
+#define WRAP_MPI_CALL_POSTFIX _Pragma("GCC diagnostic pop");
+
+#else
+#define WRAP_MPI_CALL_PREFIX
+#define WRAP_MPI_CALL_POSTFIX
+#endif
 '''
 
 fortran_wrapper_includes = '''
@@ -282,7 +297,6 @@ _EXTERN_C_ void *MPI_F_MPI_IN_PLACE WEAK_POSTFIX;
 #else
 #define BufferC2F(x) (x)
 #endif /* defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__PGI) || defined(_CRAYC) */
-
 '''
 
 wrapper_main_pmpi_init_decls ='''
@@ -1018,17 +1032,23 @@ class FortranDelegation:
             out.write(mpich_call)
         else:
             out.write("#if (!defined(MPICH_HAS_C2F) && defined(MPICH_NAME) && (MPICH_NAME == 1)) /* MPICH test */\n")
+            out.write("WRAP_MPI_CALL_PREFIX\n")
             out.write(mpich_call)
+            out.write("WRAP_MPI_CALL_POSTFIX\n")
             out.write("#else /* MPI-2 safe call */\n")
             out.write(joinlines(self.temps))
             if mpich_c2f_call != mpi2_call:
                 out.write("# if defined(MPICH_NAME) && (MPICH_NAME == 1) /* MPICH test */\n")
                 out.write(joinlines(self.mpich_c2f_copies))
+                out.write("WRAP_MPI_CALL_PREFIX\n")
                 out.write(mpich_c2f_call)
+                out.write("WRAP_MPI_CALL_POSTFIX\n")
                 out.write(joinlines(self.mpich_c2f_writebacks))
                 out.write("# else /* MPI-2 safe call */\n")
             out.write(joinlines(self.copies))
+            out.write("WRAP_MPI_CALL_PREFIX\n")
             out.write(mpi2_call)
+            out.write("WRAP_MPI_CALL_POSTFIX\n")
             out.write(joinlines(self.writebacks))
             if mpich_c2f_call != mpi2_call:
                 out.write("# endif /* MPICH test */\n")
@@ -1236,7 +1256,10 @@ def write_fortran_wrappers(out, decl, return_val):
     if decl.hasArrayIndexOutputParam():
         call.addWriteback("}")
 
+    out.write("WRAP_MPI_CALL_PREFIX\n")
     call.write(out)
+    out.write("WRAP_MPI_CALL_POSTFIX\n")
+
     if decl.returnsErrorCode():
         out.write("    *ierr = %s;\n" % return_val)
     else:
