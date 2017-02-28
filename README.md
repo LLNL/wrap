@@ -23,10 +23,7 @@ by Todd Gamblin, tgamblin@llnl.gov, https://github.com/tgamblin/wrap
        -o file        Send output to a file instead of stdout.
 
 
-Thanks to these people for their suggestions and contributions:
-
-* David Lecomber, Allinea
-* Barry Rountree, LLNL
+Many thanks to our [contributors](https://github.com/LLNL/wrap/graphs/contributors).
 
 Known Bugs:
 
