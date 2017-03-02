@@ -21,6 +21,10 @@ by Todd Gamblin, tgamblin@llnl.gov, https://github.com/tgamblin/wrap
                       automatically (use -DPIC when you compile dynamic
                       libs).
        -o file        Send output to a file instead of stdout.
+       -w             Do not print compiler warnings for deprecated MPI functions.
+                      This option will add macros around {{callfn}} to disable (and
+                      restore) the compilers diagnostic functions, if the compiler
+                      supports this functionality.
 
 
 Many thanks to our [contributors](https://github.com/LLNL/wrap/graphs/contributors).
@@ -303,6 +307,50 @@ We don't disallow `{{fnall}}` or `{{fn}}` with `-s`, but If you used
 `{{fnall}}` here, each XML tag would have a C wrapper function around it,
 which is probably NOT what you want.
 
+
+-w: Disable MPI deprecation warnings
+----------------------------------------
+
+At the time of implementing this feature, many old MPI functions got declared
+deprecated in OpenMPI:
+
+```
+warning: 'PMPI_Type_extent' is deprecated: MPI_Type_extent is superseded by MPI_Type_get_extent in MPI-2.0 [-Wdeprecated-declarations]
+          PMPI_Type_extent(recvtype, &re);
+          ^
+```
+
+Even if these functions are deprecated, they may be wrapped for older
+applications, so these warnings may confuse the user. Even worse: warnings about
+deprecated non-MPI functions may be missed.
+
+With enabling the  `-w` option of wrap, macros will be added around `{{callfn}}`
+to disable the warnings for MPI calls. However, if you use `{{fn_name}}`,
+`{{args}}`, etc. for custom invocations, you may add `WRAP_MPI_CALL_PREFIX` and
+`WRAP_MPI_CALL_POSTFIX` around your MPI calls, to suppress deprecation warnings
+for these calls, too.
+
+**Note:** If the could should be compatible with and without this functionality
+enabled, you'll have to check if the macros are available.
+
+Example:
+```
+#ifndef WRAP_MPI_CALL_PREFIX
+#define WRAP_MPI_CALL_PREFIX
+#endif
+
+#ifndef WRAP_MPI_CALL_POSTFIX
+#define WRAP_MPI_CALL_POSTFIX
+#endif
+
+
+{{fnall fn_name MPI_Pcontrol}}
+    WRAP_MPI_CALL_PREFIX
+    return P{{fn_name}}({{args}});
+    WRAP_MPI_CALL_POSTFIX
+{{endfnall}}
+```
+--------------
 
 1. Anthony Chan, William Gropp and Weing Lusk.  *User's Guide for MPE:
 Extensions for MPI Programs*.  ANL/MCS-TM-ANL-98/xx.
