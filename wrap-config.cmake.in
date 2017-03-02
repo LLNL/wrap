@@ -70,7 +70,7 @@ if (NOT Wrap_CONFIG_LOADED)
 
     if (ARGN)
       # Prefer directly passed in flags.
-      list(GET ARGN 0 wrap_flags)
+      set(wrap_flags "${ARGN}")
     else()
       # Otherwise, look in the source file properties
       get_source_file_property(wrap_flags ${wrapper_name} WRAP_FLAGS)

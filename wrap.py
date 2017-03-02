@@ -1048,6 +1048,10 @@ class FortranDelegation:
         mpich_c2f_call = "%s(%s);\n" % (call, ", ".join(self.mpich_c2f_actuals))
 
         out.write("    %s %s = 0;\n" % (self.decl.retType(), self.return_val))
+
+        if ignore_deprecated:
+            out.write("    WRAP_MPI_CALL_PREFIX\n")
+
         if mpich_call == mpi2_call and not (self.temps or self.copies or self.writebacks):
             out.write(mpich_call)
         else:
@@ -1069,6 +1073,8 @@ class FortranDelegation:
             out.write(joinlines(self.frees))
             out.write("#endif /* MPICH test */\n")
 
+        if ignore_deprecated:
+            out.write("    WRAP_MPI_CALL_POSTFIX\n")
 
 def write_fortran_wrappers(out, decl, return_val):
     """Writes primary fortran wrapper that handles arg translation.
