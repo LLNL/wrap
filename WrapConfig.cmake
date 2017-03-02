@@ -29,6 +29,7 @@ if (NOT Wrap_CONFIG_LOADED)
 
     # Play nice with FindPythonInterp -- use the interpreter if it was found,
     # otherwise use the script directly.
+    find_package(PythonInterp 2.6)
     if (PYTHON_EXECUTABLE)
       set(command ${PYTHON_EXECUTABLE})
       set(script_arg ${Wrap_EXECUTABLE})

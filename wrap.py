@@ -31,6 +31,7 @@
 # WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #################################################################################################
+from __future__ import print_function
 usage_string = \
 '''Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
  Python script for creating PMPI wrappers. Roughly follows the syntax of
@@ -46,10 +47,14 @@ usage_string = \
                   Default is \'pmpi_init_\'.  Wrappers compiled for PIC will guess the
                   right binding automatically (use -fPIC when you compile dynamic libs).
    -o file        Send output to a file instead of stdout.
+   -w             Do not print compiler warnings for deprecated MPI functions.
+                  This option will add macros around {{callfn}} to disable (and
+                  restore) the compilers diagnostic functions, if the compiler
+                  supports this functionality.
 
  by Todd Gamblin, tgamblin@llnl.gov
 '''
-import tempfile, getopt, subprocess, sys, os, re, StringIO, types, itertools
+import tempfile, getopt, subprocess, sys, os, re, types, itertools
 
 # Default values for command-line parameters
 mpicc = 'mpicc'                    # Default name for the MPI compiler
@@ -61,6 +66,7 @@ output_guards = False              # Don't print reentry guards by default
 skip_headers = False               # Skip header information and defines (for non-C output)
 dump_prototypes = False            # Just exit and dump MPI protos if false.
 static_dir = None                  # Directory to write source files for static lib to
+ignore_deprecated = False          # Do not print compiler warnings for deprecated MPI functions
 
 # Possible legal bindings for the fortran version of PMPI_Init()
 pmpi_init_bindings = ["PMPI_INIT", "pmpi_init", "pmpi_init_", "pmpi_init__"]
@@ -71,7 +77,7 @@ pmpi_init_thread_bindings = ["PMPI_INIT_THREAD", "pmpi_init_thread", "pmpi_init_
 # In general, all MPI calls we care about return int.  We include double
 # to grab MPI_Wtick and MPI_Wtime, but we'll ignore the f2c and c2f calls
 # that return MPI_Datatypes and other such things.
-# MPI_Aint_add and MPI_Aint_diff return MPI_Aint, so include that too. 
+# MPI_Aint_add and MPI_Aint_diff return MPI_Aint, so include that too.
 rtypes = ['int', 'double', 'MPI_Aint' ]
 
 # If we find these strings in a declaration, exclude it from consideration.
@@ -181,7 +187,7 @@ void char_p_c2f(const char* cstr, char* fstr, int len)
 }
 
 #if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__PGI) || defined(_CRAYC)
-#if defined(__GNUC__) 
+#if defined(__GNUC__)
 #define WEAK_POSTFIX __attribute__ ((weak))
 #else
 #define WEAK_POSTFIX
@@ -313,6 +319,33 @@ _EXTERN_C_ void pmpi_init_thread__(MPI_Fint *required, MPI_Fint *provided, MPI_F
 
 # Declarations from the .w file to be repeated in every source file.
 declarations = None
+
+# Macros used to suppress MPI deprecation warnings.
+wrapper_diagnosics_macros = '''
+/* Macros to enable and disable compiler warnings for deprecated functions.
+ * These macros will be used to silent warnings about deprecated MPI functions,
+ * as these should be wrapped, even if they are deprecated.
+ *
+ * Note: The macros support GCC and clang compilers only. For other compilers
+ *       just add similar macros for your compiler.
+ */
+#if (defined(__GNUC__) && !defined(__clang__)) && \\
+  ((__GNUC__ == 4 && __GNUC_MINOR__ >= 6) || __GNUC__ > 4)
+#define  WRAP_MPI_CALL_PREFIX     \\
+  _Pragma("GCC diagnostic push"); \\
+  _Pragma("GCC diagnostic ignored \\"-Wdeprecated-declarations\\"");
+#define WRAP_MPI_CALL_POSTFIX _Pragma("GCC diagnostic pop");
+#elif defined(__clang__)
+#define  WRAP_MPI_CALL_PREFIX       \\
+  _Pragma("clang diagnostic push"); \\
+  _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
+#define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
+#else
+#define WRAP_MPI_CALL_PREFIX
+#define WRAP_MPI_CALL_POSTFIX
+#endif
+
+'''
 
 # Default modifiers for generated bindings
 default_modifiers = ["_EXTERN_C_"]  # _EXTERN_C_ is #defined (or not) in wrapper_includes. See above.
@@ -520,7 +553,7 @@ class InnerLexer(OuterRegionLexer):
 cur_filename = ""
 cur_function = None
 
-class WrapSyntaxError:
+class WrapSyntaxError(Exception):
     """Simple Class for syntax errors raised by the wrapper generator (rather than python)"""
     pass
 
@@ -593,7 +626,7 @@ class Param:
         """True if this Param is a pointer to which an array index (or MPI_UNDEFINED) will be written"""
         return (self.decl.name in mpi_array_index_output_calls
                 and self.pos == mpi_array_index_output_calls[self.decl.name])
-    
+
     def isArrayIndexArrayOutputParam(self):
         """True if this Param is an array to which array indices will be written"""
         return (self.decl.name in mpi_array_index_array_output_calls
@@ -623,17 +656,17 @@ class Param:
         return self.type == "MPI_Status"
 
     def isVoid(self):
-        """True if this Param is of type void. 
+        """True if this Param is of type void.
         """
         return self.type == "void"
 
     def isString(self):
-        """True if this Param is of type char*. 
+        """True if this Param is of type char*.
         """
         return self.type == "char" and self.pointers
 
     def isInout(self, function_name):
-        """True if this Param is an INOUT argument. c2f and f2c calls 
+        """True if this Param is an INOUT argument. c2f and f2c calls
         only for INOUT arguments.
         """
         if self.type == "MPI_File":
@@ -744,7 +777,7 @@ class Declaration:
             return self.args[mpi_array_index_output_calls[self.name]]
         if (self.name in mpi_array_index_array_output_calls):
             return self.args[mpi_array_index_array_output_calls[self.name].values()[0]]
-    
+
     def argNames(self):
         return [arg.name for arg in self.argsNoEllipsis()]
 
@@ -757,7 +790,7 @@ class Declaration:
         for arg in self.args:
             if arg.isString():
                 strLengths.append("int %s_len" % arg.name)
-            
+
         if self.name == "MPI_Init": formals = []    # Special case for init: no args in fortran
         elif self.name == "MPI_Init_thread": formals = ["MPI_Fint *required", "MPI_Fint *provided"]    # Special case for init: no args in fortran
 
@@ -772,7 +805,7 @@ class Declaration:
         for arg in self.args:
             if arg.isString():
                 strLengths.append("%s_len" % arg.name)
-                
+
         if self.name == "MPI_Init": names = []
         elif self.name == "MPI_Init_thread": names = ["required", "provided"]
 
@@ -808,10 +841,10 @@ def enumerate_mpi_declarations(mpicc, includes):
         the caller.
     """
     # Create an input file that just includes <mpi.h>
-    tmpfile = tempfile.NamedTemporaryFile('w+b', -1, '.c')
+    tmpfile = tempfile.NamedTemporaryFile('w+b', -1, suffix='.c')
     tmpname = "%s" % tmpfile.name
-    tmpfile.write('#include <mpi.h>')
-    tmpfile.write("\n")
+    tmpfile.write(b'#include <mpi.h>')
+    tmpfile.write(b"\n")
     tmpfile.flush()
 
     # Run the mpicc -E on the temp file and pipe the output
@@ -828,7 +861,7 @@ def enumerate_mpi_declarations(mpicc, includes):
     # Parse out the declarations from the MPI file
     mpi_h = popen.stdout
     for line in mpi_h:
-        line = line.strip()
+        line = line.decode().strip()
         begin = begin_decl_re.search(line)
         if begin and not exclude_re.search(line):
             # Grab return type and fn name from initial parse
@@ -836,7 +869,7 @@ def enumerate_mpi_declarations(mpicc, includes):
 
             # Accumulate rest of declaration (possibly multi-line)
             while not end_decl_re.search(line):
-                line += " " + mpi_h.next().strip()
+                line += " " + next(mpi_h).decode().strip()
 
             # Split args up by commas so we can parse them independently
             fn_and_paren = r'(%s\s*\()' % fn_name
@@ -847,7 +880,7 @@ def enumerate_mpi_declarations(mpicc, includes):
                 raise ValueError("Malformed declaration in header: '%s'" % line)
 
             arg_string = line[lparen+1:rparen]
-            arg_list = map(lambda s: s.strip(), arg_string.split(","))
+            arg_list = list(map(lambda s: s.strip(), arg_string.split(",")))
 
             # Handle functions that take no args specially
             if arg_list == ['void']:
@@ -869,7 +902,7 @@ def enumerate_mpi_declarations(mpicc, includes):
                     types.add(type)
                     all_pointers.add(pointers)
                     # If there's no name, make one up.
-                    if not name: 
+                    if not name:
                         name = "arg_" + str(arg_num)
 
                     decl.addArgument(Param(type.strip(), pointers, name, array, arg_num))
@@ -1136,7 +1169,7 @@ def write_fortran_wrappers(out, decl, return_val):
     for arg in decl.args:
         if arg.name == "...":   # skip ellipsis
             continue
-        
+
         if not (arg.pointers or arg.array):
             if not arg.isHandle():
                 # These are pass-by-value arguments, so just deref and pass thru
@@ -1158,7 +1191,7 @@ def write_fortran_wrappers(out, decl, return_val):
                 call.addFree(temp)
                 call.addCopy("char_p_f2c(%s,%s_len,&%s);"  % (arg.name, arg.name, temp))
                 call.addWriteback("char_p_c2f(%s,%s,%s_len);" % (temp, arg.name, arg.name))
-                
+
             elif (arg.isArrayIndexOutputParam()):
                 # Convert from C array index to array Fortran index
                 call.addActual("%s" % arg.name)
@@ -1225,7 +1258,7 @@ def write_fortran_wrappers(out, decl, return_val):
                         call.addWritebackMPICH_C2F("    %s_c2f(&%s[i], &%s[i * MPI_F_STATUS_SIZE]);" % (conv, temp, arg.name))
                     else:
                         call.addActualC2F(temp)
-                        
+
                         #if arg.isInout(decl.name):
                         call.addCopy("for (i=0; i < %s; i++)" % count)
                         call.addCopy("    temp_%s[i] = %s_f2c(%s[i]);"  % (arg.name, conv, arg.name))
@@ -1324,7 +1357,7 @@ def all_but(fn_list):
     """Return a list of all mpi functions except those in fn_list"""
     all_mpi = set(mpi_functions.keys())
     diff = all_mpi - set(fn_list)
-    return sorted([x for x in diff])
+    return [x for x in sorted(diff)]
 
 @macro("foreachfn", has_body=True)
 def foreachfn(out, scope, args, children):
@@ -1378,7 +1411,11 @@ def fn(out, scope, args, children):
         if static_dir:
             out = static_out(fn_name)
 
-        c_call = "%s = P%s(%s);" % (return_val, fn.name, ", ".join(fn.argNames()))
+        if ignore_deprecated:
+            c_call = "%s\n%s = P%s(%s);\n%s" % ("WRAP_MPI_CALL_PREFIX", return_val, fn.name, ", ".join(fn.argNames()), "WRAP_MPI_CALL_POSTFIX")
+        else:
+            c_call = "%s = P%s(%s);" % (return_val, fn.name, ", ".join(fn.argNames()))
+
         if fn_name == "MPI_Init" and output_fortran_wrappers:
             def callfn(out, scope, args, children):
                 # All this is to deal with fortran, since fortran's MPI_Init() function is different
@@ -1574,7 +1611,7 @@ def filter_macro(out, scope, args, children):
         syntax_error("Invalid regex in 'filter' macro: '%s'" % str(regex))
     def match(s):
         return re.search(regex, s)
-    return filter(match, l)
+    return list(filter(match, l))
 
 @macro("fn_num")
 def fn_num(out, scope, args, children):
@@ -1685,7 +1722,7 @@ class Parser:
     def gettok(self):
         """Puts the next token in the input stream into self.next."""
         try:
-            self.next = self.tokens.next()
+            self.next = next(self.tokens)
         except StopIteration:
             self.next = None
 
@@ -1796,7 +1833,7 @@ output_filename = None
 static_files = dict()
 
 try:
-    opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdc:o:i:I:S:")
+    opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdwc:o:i:I:S:")
 except getopt.GetoptError, err:
     sys.stderr.write(str(err) + "\n")
     usage()
@@ -1806,6 +1843,7 @@ for opt, arg in opts:
     if opt == "-f": output_fortran_wrappers = True
     if opt == "-s": skip_headers = True
     if opt == "-g": output_guards = True
+    if opt == "-w": ignore_deprecated = True
     if opt == "-c": mpicc = arg
     if opt == "-I":
         stripped = arg.strip()
@@ -1843,7 +1881,7 @@ if len(args) < 1 and not dump_prototypes:
 #
 for decl in enumerate_mpi_declarations(mpicc,includes):
     mpi_functions[decl.name] = decl
-    if dump_prototypes: print decl
+    if dump_prototypes: print(decl)
 
 # Fail gracefully if we didn't find anything.
 if not mpi_functions:
@@ -1857,7 +1895,7 @@ try:
     # Start with some headers and definitions.
     if not skip_headers:
         output.write(wrapper_includes)
-        if output_guards: 
+        if output_guards:
             if static_dir:
                 output.write("int in_wrapper = 0;\n")
             else:
@@ -1866,6 +1904,10 @@ try:
             output.write(fortran_wrapper_includes)
         if not static_dir:
             output.write(wrapper_main_pmpi_init_decls)
+
+    # Print the macros for disabling MPI function deprecation warnings.
+    if ignore_deprecated:
+        output.write(wrapper_diagnosics_macros)
 
     # Parse each file listed on the command line and execute
     # it once it's parsed.
