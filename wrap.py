@@ -1567,6 +1567,12 @@ def fnall(out, scope, args, children):
     args or syntax_error("Error: fnall requires function name argument.")
     fn(out, scope, [args[0]] + all_but(args[1:]), children)
 
+@macro("fntype", has_body=True)
+def fntype(out, scope, args, children):
+    """Iterate over all functions with a specific type and generate skeleton too."""
+    len(args) == 2 or syntax_error("Error: fntype requires function name argument.")
+    fn(out, scope, [args[0]] + [decl.name for decl in mpi_functions.itervalues() if args[1] in decl.types()], children)
+
 @macro("sub")
 def sub(out, scope, args, children):
     """{{sub <string> <regexp> <substitution>}}

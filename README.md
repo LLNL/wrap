@@ -119,6 +119,32 @@ delegation via `{{callfn}}`:
     {{endfnall}}
     ```
 
+* `fntype` iterates over all functions with a given argument argument type.
+
+    ```
+    {{fntype <iterator variable name> <type>}}
+      // code here
+    {{endfntype}}
+    ```
+
+    Example:
+    ```
+    {{fntype fn_name MPI_Comm}}
+      printf("Function with MPI_Comm called.\n");
+      {{callfn}}
+    {{endfntype}}
+    ```
+    ```
+    _EXTERN_C_ int PMPI_Comm_rank(MPI_Comm comm, int *rank);
+    _EXTERN_C_ int MPI_Comm_rank(MPI_Comm comm, int *rank) {
+      int _wrap_py_return_val = 0;
+
+      printf("Function with MPI_Comm called.\n");
+      _wrap_py_return_val = PMPI_Comm_rank(comm, rank);
+      return _wrap_py_return_val;
+    }
+    ```
+
 * `callfn` expands to the call of the function being profiled.
 
 * `foreachfn` and `forallfn` are the counterparts of `fn` and `fnall`, but they don't generate the
