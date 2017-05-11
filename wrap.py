@@ -496,7 +496,7 @@ class Declaration:
         return self.argsNoEllipsis()[index].name
 
     def fortranFormals(self):
-        formals = map(Param.fortranFormal, self.argsNoEllipsis())
+        formals = list(map(Param.fortranFormal, self.argsNoEllipsis()))
         if self.name == "MPI_Init": formals = []    # Special case for init: no args in fortran
 
         ierr = []
