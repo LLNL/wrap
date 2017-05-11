@@ -776,7 +776,7 @@ class Declaration:
         if (self.name in mpi_array_index_output_calls):
             return self.args[mpi_array_index_output_calls[self.name]]
         if (self.name in mpi_array_index_array_output_calls):
-            return self.args[mpi_array_index_array_output_calls[self.name].values()[0]]
+            return self.args[list(mpi_array_index_array_output_calls[self.name].values())[0]]
 
     def argNames(self):
         return [arg.name for arg in self.argsNoEllipsis()]
@@ -1571,7 +1571,7 @@ def fnall(out, scope, args, children):
 def fntype(out, scope, args, children):
     """Iterate over all functions with a specific type and generate skeleton too."""
     len(args) == 2 or syntax_error("Error: fntype requires function name argument.")
-    fn(out, scope, [args[0]] + [decl.name for decl in mpi_functions.itervalues() if args[1] in decl.types()], children)
+    fn(out, scope, [args[0]] + [decl.name for decl in mpi_functions.values() if args[1] in decl.types()], children)
 
 @macro("sub")
 def sub(out, scope, args, children):
@@ -1846,7 +1846,7 @@ static_files = dict()
 
 try:
     opts, args = getopt.gnu_getopt(sys.argv[1:], "fsgdwc:o:i:I:S:")
-except getopt.GetoptError, err:
+except getopt.GetoptError as err:
     sys.stderr.write(str(err) + "\n")
     usage()
 
