@@ -785,7 +785,7 @@ class Declaration:
         return self.argsNoEllipsis()[index].name
 
     def fortranFormals(self):
-        formals = map(Param.fortranFormal, self.argsNoEllipsis())
+        formals = list(map(Param.fortranFormal, self.argsNoEllipsis()))
         strLengths = []
         for arg in self.args:
             if arg.isString():
