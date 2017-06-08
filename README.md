@@ -119,20 +119,20 @@ delegation via `{{callfn}}`:
     {{endfnall}}
     ```
 
-* `fntype` iterates over all functions with a given argument argument type.
+* `fnalltype` iterates over all functions *minus* the named functions with a given argument type.
 
     ```
-    {{fntype <iterator variable name> <type>}}
+    {{fnalltype <iterator variable name> <type> <function A> <function B> ...}}
       // code here
-    {{endfntype}}
+    {{endfnalltype}}
     ```
 
     Example:
     ```
-    {{fntype fn_name MPI_Comm}}
+    {{fnalltype fn_name MPI_Comm}}
       printf("Function with MPI_Comm called.\n");
       {{callfn}}
-    {{endfntype}}
+    {{endfnalltype}}
     ```
     ```
     _EXTERN_C_ int PMPI_Comm_rank(MPI_Comm comm, int *rank);
