@@ -1,6 +1,8 @@
 wrap.py
 ===========================
-a [PMPI](http://www.open-mpi.org/faq/?category=perftools#PMPI) wrapper generator
+
+A [PMPI](http://www.open-mpi.org/faq/?category=perftools#PMPI) or 
+[GOTCHA](https://github.com/LLNL/GOTCHA) wrapper generator for MPI.
 
 by Todd Gamblin, tgamblin@llnl.gov, https://github.com/tgamblin/wrap
 
@@ -9,6 +11,7 @@ by Todd Gamblin, tgamblin@llnl.gov, https://github.com/tgamblin/wrap
        the Argonne PMPI wrapper generator, with some enhancements.
      Options:"
        -d             Just dump function declarations parsed out of mpi.h
+       -G             Generate GOTCHA instead of PMPI wrappers.
        -f             Generate fortran wrappers in addition to C wrappers.
        -g             Generate reentry guards around wrapper functions.
        -c exe         Provide name of MPI compiler (for parsing mpi.h).
@@ -247,6 +250,66 @@ They're not designed for making wrappers, but declarations of lots of variables 
 
 * `{{<varname>}}` *(not yet supported)*
 	Access a variable declared by `{{vardecl}}`.
+
+GOTCHA wrappers
+-------------------------------
+
+With the `-G` option, wrap.py generates GOTCHA instead of PMPI
+wrappers. [GOTCHA](https://github.com/LLNL/GOTCHA) is a library to
+wrap library functions at runtime. It is similar to LD_PRELOAD, but
+operates via a programmable API. This way, we can generate wrappers
+for all MPI functions, but decide at runtime which functions should
+actually be wrapped. The GOTCHA instrumentation mechanism also avoids
+certain linking pitfalls that can hamper with PMPI's weak symbol approach.
+
+GOTCHA works by binding target functions to wrapper functions at
+runtime. A pointer to the original target function is saved, and can
+be used to call the original function from the wrapper. In GOTCHA
+mode, wrap.py generates three things for each wrapped MPI function:
+
+* A pointer to the original function `wrap_MPI_Foo_orig`, initialized
+  to `NULL`.
+
+* The wrapper function `wrap_MPI_Foo`. The call to the original
+  function via `{{callfn}}` uses the function pointer.
+
+* A GOTCHA binding struct `wrap_MPI_Foo_binding` of type
+  `gotcha_binding_t` that must be passed to `gotcha_wrap()` by the
+  target application or tool to activate the wrapper.
+
+Unlike in PMPI mode, generating the wrapper and linking it to the
+target application does *not* automatically wrap the MPI functions.
+The target application or tool must invoke `gotcha_wrap()` via some
+other instrumentation mechanism for all functions that should be
+wrapped.
+
+As an example, consider the following simple wrapper:
+
+    {{fn func MPI_Send}}{
+        printf("MPI function: %s\n", "{{func}}");
+        {{callfn}}
+    }{{endfn}}
+
+In GOTCHA mode, this will produce the following output:
+
+    /* ================== C Wrappers for MPI_Send ================== */
+    int (*wrap_MPI_Send_orig)(const void*, int, MPI_Datatype, int, int, MPI_Comm) = NULL;
+    _EXTERN_C_ int wrap_MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm) { 
+        int _wrap_py_return_val = 0;
+    {
+        printf("MPI function: %s\n", "MPI_Send");
+        _wrap_py_return_val = (*wrap_MPI_Send_orig)(buf, count, datatype, dest, tag, comm);
+    }    return _wrap_py_return_val;
+    }
+
+    struct gotcha_binding_t wrap_MPI_Send_binding = { "MPI_Send", (void*) wrap_MPI_Send, &wrap_MPI_Send_orig };
+
+The target application must now activate the wrapper somewhere via
+`gotcha_wrap`:
+
+    gotcha_wrap(&wrap_MPI_Send_binding, 1, "my wrapper");
+
+Note that GOTCHA mode currently does not generate fortran wrappers.
 
 Notes on the fortran wrappers
 -------------------------------
