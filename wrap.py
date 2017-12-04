@@ -644,7 +644,7 @@ def write_exit_guard(out):
 def write_gotcha_c_wrapper(out, decl, return_val, write_body):
     """Write the C wrapper for an MPI function."""
     # Write the pointer to the original function
-    out.write("%s (*wrap_%s_orig)(%s) = NULL;\n" % (decl.retType(), decl.name, ", ".join(decl.types())))
+    out.write("%s (*wrap_%s_orig)(%s) = NULL;\n" % (decl.retType(), decl.name, ", ".join(decl.formals())))
 
     # Now write the wrapper function, which will call the original function through the pointer
     out.write(decl.gotcha_prototype(default_modifiers))
