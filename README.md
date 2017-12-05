@@ -264,24 +264,25 @@ certain linking pitfalls that can hamper with PMPI's weak symbol approach.
 
 GOTCHA works by binding target functions to wrapper functions at
 runtime. A pointer to the original target function is saved, and can
-be used to call the original function from the wrapper. In GOTCHA
-mode, wrap.py generates three things for each wrapped MPI function:
+be used to call the original function from inside the wrapper. In
+GOTCHA mode, wrap.py generates three things for each wrapped MPI
+function:
 
 * A pointer to the original function `wrap_MPI_Foo_orig`, initialized
   to `NULL`.
 
-* The wrapper function `wrap_MPI_Foo`. The call to the original
-  function via `{{callfn}}` uses the function pointer.
+* The wrapper function `wrap_MPI_Foo`. A `{{callfn}}` call inside the
+  body will call the original function through the saved function
+  pointer in `wrap_MPI_Foo_orig`.
 
 * A GOTCHA binding struct `wrap_MPI_Foo_binding` of type
-  `gotcha_binding_t` that must be passed to `gotcha_wrap()` by the
-  target application or tool to activate the wrapper.
+  `gotcha_binding_t`. This struct must be passed to `gotcha_wrap()` by
+  the target application or tool to activate the wrapper.
 
 Unlike in PMPI mode, generating the wrapper and linking it to the
 target application does *not* automatically wrap the MPI functions.
 The target application or tool must invoke `gotcha_wrap()` via some
-other instrumentation mechanism for all functions that should be
-wrapped.
+other instrumentation mechanism to activate the function wrappers.
 
 As an example, consider the following simple wrapper:
 
@@ -293,7 +294,8 @@ As an example, consider the following simple wrapper:
 In GOTCHA mode, this will produce the following output:
 
     /* ================== C Wrappers for MPI_Send ================== */
-    int (*wrap_MPI_Send_orig)(const void*, int, MPI_Datatype, int, int, MPI_Comm) = NULL;
+    int (*wrap_MPI_Send_orig)(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm) = NULL;
+
     _EXTERN_C_ int wrap_MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm) { 
         int _wrap_py_return_val = 0;
     {
