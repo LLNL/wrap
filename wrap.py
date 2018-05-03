@@ -329,20 +329,27 @@ wrapper_diagnosics_macros = '''
  * Note: The macros support GCC and clang compilers only. For other compilers
  *       just add similar macros for your compiler.
  */
-#if (defined(__GNUC__) && !defined(__clang__)) && \\
-  ((__GNUC__ == 4 && __GNUC_MINOR__ >= 6) || __GNUC__ > 4)
+#ifndef WRAP_MPI_CALL_PREFIX
+#if defined(__clang__)
+#define WRAP_MPI_CALL_PREFIX        \\
+  _Pragma("clang diagnostic push"); \\
+  _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
+#define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
+#elif defined(__INTEL_COMPILER)
+#define WRAP_MPI_CALL_PREFIX \\
+  _Pragma("warning push");   \\
+  _Pragma("warning(disable:1786)");
+#define WRAP_MPI_CALL_POSTFIX _Pragma("warning pop")
+#elif (defined(__GNUC__) && \\
+  ((__GNUC__ == 4 && __GNUC_MINOR__ >= 6) || __GNUC__ > 4))
 #define  WRAP_MPI_CALL_PREFIX     \\
   _Pragma("GCC diagnostic push"); \\
   _Pragma("GCC diagnostic ignored \\"-Wdeprecated-declarations\\"");
 #define WRAP_MPI_CALL_POSTFIX _Pragma("GCC diagnostic pop");
-#elif defined(__clang__)
-#define  WRAP_MPI_CALL_PREFIX       \\
-  _Pragma("clang diagnostic push"); \\
-  _Pragma("clang diagnostic ignored \\"-Wdeprecated-declarations\\"");
-#define WRAP_MPI_CALL_POSTFIX _Pragma("clang diagnostic pop");
 #else
 #define WRAP_MPI_CALL_PREFIX
 #define WRAP_MPI_CALL_POSTFIX
+#endif
 #endif
 
 '''
