@@ -1202,7 +1202,8 @@ def write_fortran_wrappers(out, decl, return_val):
         else:
             if (arg.isString()):
                 temp = "temp_%s" % arg.name
-                call.addActual(arg.name)
+                call.addActualMPICH(arg.name)
+                call.addActualC2F(temp)
                 call.addTemp("char*", temp)
                 call.addCopy("%s = (%s)malloc(sizeof(%s) * (%s_len+1));" %
                                 (temp, "char*", arg.type, arg.name))
@@ -1212,7 +1213,8 @@ def write_fortran_wrappers(out, decl, return_val):
 
             elif (arg.isConstString()):
                 temp = "temp_%s" % arg.name
-                call.addActual(arg.name)
+                call.addActualMPICH(arg.name)
+                call.addActualC2F(temp)
                 call.addTemp("char*", temp)
                 call.addCopy("%s = (%s)malloc(sizeof(%s) * (%s_len+1));" %
                                 (temp, "char*", arg.type, arg.name))
