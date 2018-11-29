@@ -672,6 +672,11 @@ class Param:
         """
         return self.type == "char" and self.pointers
 
+    def isConstString(self):
+        """True if this Param is of type char*.
+        """
+        return self.type == "const char" and self.pointers
+
     def isInout(self, function_name):
         """True if this Param is an INOUT argument. c2f and f2c calls
         only for INOUT arguments.
@@ -686,7 +691,7 @@ class Param:
         """Prints out a formal parameter for a fortran wrapper."""
         # There are only a few possible fortran arg types in our wrappers, since
         # everything is a pointer.
-        if self.type in ("MPI_Aint", "char") or self.type.endswith("_function"):
+        if self.type in ("MPI_Aint", "char", "const char") or self.type.endswith("_function"):
             ftype = self.type
         else:
             ftype = "MPI_Fint"
@@ -795,7 +800,7 @@ class Declaration:
         formals = list(map(Param.fortranFormal, self.argsNoEllipsis()))
         strLengths = []
         for arg in self.args:
-            if arg.isString():
+            if arg.isString() or arg.isConstString():
                 strLengths.append("int %s_len" % arg.name)
 
         if self.name == "MPI_Init": formals = []    # Special case for init: no args in fortran
@@ -810,7 +815,7 @@ class Declaration:
 
         strLengths = []
         for arg in self.args:
-            if arg.isString():
+            if arg.isString() or arg.isConstString():
                 strLengths.append("%s_len" % arg.name)
 
         if self.name == "MPI_Init": names = []
@@ -1204,6 +1209,15 @@ def write_fortran_wrappers(out, decl, return_val):
                 call.addFree(temp)
                 call.addCopy("char_p_f2c(%s,%s_len,&%s);"  % (arg.name, arg.name, temp))
                 call.addWriteback("char_p_c2f(%s,%s,%s_len);" % (temp, arg.name, arg.name))
+
+            elif (arg.isConstString()):
+                temp = "temp_%s" % arg.name
+                call.addActual(arg.name)
+                call.addTemp("char*", temp)
+                call.addCopy("%s = (%s)malloc(sizeof(%s) * (%s_len+1));" %
+                                (temp, "char*", arg.type, arg.name))
+                call.addFree(temp)
+                call.addCopy("char_p_f2c(%s,%s_len,&%s);"  % (arg.name, arg.name, temp))
 
             elif (arg.isArrayIndexOutputParam()):
                 # Convert from C array index to array Fortran index
