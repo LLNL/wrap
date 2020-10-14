@@ -43,7 +43,7 @@ going on.
 
 CMake Integration
 -----------------------------
-`wrap.py` includes a `WrapConfig.cmake` file.  You can use this in your CMake project to automatically generate rules to generate wrap.py code.
+`wrap.py` includes a `wrap-config.cmake` file.  You can use this in your CMake project to automatically generate rules to generate wrap.py code.
 
 Here's an example.  Suppose you put `wrap.py` in a subdirectory of your project called wrap, and your project looks like this:
 
@@ -51,12 +51,12 @@ Here's an example.  Suppose you put `wrap.py` in a subdirectory of your project 
         CMakeLists.txt
         wrap/
             wrap.py
-            WrapConfig.cmake
+            wrap-config.cmake
 In your top-level CMakeLists.txt file, you can now do this:
 
     # wrap.py setup -- grab the add_wrapped_file macro.
     set(WRAP ${PROJECT_SOURCE_DIR}/wrap/wrap.py)
-    include(wrap/WrapConfig.cmake)
+    include(wrap/wrap-config.cmake)
 
 If you have a wrapped source file, you can use the wrapper auto-generation like this:
 
