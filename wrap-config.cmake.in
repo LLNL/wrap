@@ -37,16 +37,7 @@ if (NOT Wrap_CONFIG_LOADED)
     set(file_path    ${CMAKE_CURRENT_BINARY_DIR}/${file_name})
     set(wrapper_path ${CMAKE_CURRENT_SOURCE_DIR}/${wrapper_name})
 
-    # Play nice with FindPythonInterp -- use the interpreter if it was found,
-    # otherwise use the script directly.
-    find_package(PythonInterp 2.6)
-    if (PYTHON_EXECUTABLE)
-      set(command ${PYTHON_EXECUTABLE})
-      set(script_arg ${Wrap_EXECUTABLE})
-    else()
-      set(command ${Wrap_EXECUTABLE})
-      set(script_arg "")
-    endif()
+    find_package(PythonInterp 2.6 REQUIRED)
 
     # Backward compatibility for old FindMPIs that did not have MPI_C_INCLUDE_PATH
     if (NOT MPI_C_INCLUDE_PATH)
@@ -90,8 +81,8 @@ if (NOT Wrap_CONFIG_LOADED)
     # Add a command to automatically wrap files.
     add_custom_command(
       OUTPUT  ${file_path}
-      COMMAND ${command} 
-      ARGS    ${script_arg} ${wrap_compiler} ${wrap_includes} ${wrap_flags} ${wrapper_path} -o ${file_path}
+      COMMAND ${PYTHON_EXECUTABLE}
+      ARGS    ${Wrap_EXECUTABLE} ${wrap_compiler} ${wrap_includes} ${wrap_flags} ${wrapper_path} -o ${file_path}
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       DEPENDS ${wrapper_path}
       COMMENT "Generating ${file_name} from ${wrapper_name}"
