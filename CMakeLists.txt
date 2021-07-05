@@ -3,7 +3,7 @@
 # All rights reserved - please read information in "LICENCSE"
 
 project(wrap)
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.12)
 
 # @authors Todd Gamblin, Tobias Hilbrich, Martin Schulz
 # @date 2011-05-01
