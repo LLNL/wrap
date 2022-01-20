@@ -1,5 +1,5 @@
 project(wrap-examples)
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.12)
 
 find_package(MPI REQUIRED)
 include_directories(${MPI_C_INCLUDE_PATH})
