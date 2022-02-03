@@ -864,7 +864,7 @@ def handle_list(list_name, list, args):
         except ValueError:
             syntax_error("Invald index value: '%s'" % args[0])
         except IndexError:
-            syntax_error("Index out of range in '%s': %d" % (list_name, index))
+            syntax_error("Index out of range in '%s': %d" % (list_name, args[0]))
 
 class TypeApplier:
     """This class implements a Macro function for applying something callable to
@@ -1092,7 +1092,7 @@ class Chunk:
 
     def iwrite(self, file, level, text):
         """Write indented text."""
-        for x in xrange(level):
+        for x in range(level):
             file.write("  ")
         file.write(text)
 
@@ -1216,7 +1216,7 @@ class Parser:
 
         if not accept_body_macros and self.is_body_macro(chunk.macro):
             syntax_error("Cannot use body macros in expression context: '%s'" % chunk.macro)
-            eys.exit(1)
+            sys.exit(1)
 
         while True:
             if self.accept(LBRACE):
@@ -1295,7 +1295,7 @@ for opt, arg in opts:
         if stripped: includes.append(stripped)
     if opt == "-i":
         if not arg in pmpi_init_bindings:
-            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(possible_bindings))
+            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(pmpi_init_bindings))
             usage()
         else:
             pmpi_init_binding = arg
