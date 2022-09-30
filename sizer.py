@@ -1,3 +1,5 @@
+import json
+
 def singleelem(args):
     ret = """
     size_t _size_{} = 0;
@@ -7,6 +9,16 @@ def singleelem(args):
         _size_{} = _tsize;
     }}
     """.format(args["dir"], args["type"], args["dir"])
+
+    return ret
+
+def singlevalue(args):
+    ret = """
+    size_t _size_{} = 0;
+    {{
+        _size_{} = {};
+    }}
+    """.format(args["dir"], args["dir"], args["arg"])
 
     return ret
 
@@ -365,6 +377,60 @@ MPI_SIZE_OUT = {
         "fn" : typecount,
         "args" : {"count" : 1, "type" : 2}
     },
+    "MPI_Issend" : {
+        "fn" : typecount,
+        "args" : {"count" : 1, "type" : 2}
+    },
+    "MPI_File_preallocate" : 
+    {
+        "fn" : singlevalue,
+        "args" : { "arg" : 1}
+    },
+    "MPI_File_write_at" : {
+        "fn" : typecount,
+        "args" : {"count" : 3, "type" : 4}
+    },
+    "MPI_File_write_at_all" : {
+        "fn" : typecount,
+        "args" : {"count" : 3, "type" : 4}
+    },
+    "MPI_File_iwrite_at_all" : {
+        "fn" : typecount,
+        "args" : {"count" : 3, "type" : 4}
+    },
+    "MPI_File_iwrite_at" : {
+        "fn" : typecount,
+        "args" : {"count" : 3, "type" : 4}
+    },
+    "MPI_File_write" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_write_all" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_iwrite_all" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_iwrite" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_write_shared" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_iwrite_shared" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_write_ordered" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+
 #Miss MPI_REDUCE_SCATTER & MPI_REDUCE_SCATTER_BLOCK
 }
 
@@ -548,6 +614,54 @@ MPI_SIZE_IN = {
    "MPI_Sendrecv_replace" : {
         "fn" : typecount,
         "args" : {"count" : 1, "type" : 2}
+    },
+   "MPI_Sendrecv_replace" : {
+        "fn" : typecount,
+        "args" : {"count" : 1, "type" : 2}
+    },
+    "MPI_File_iread_at" : {
+        "fn" : typecount,
+        "args" : {"count" : 3, "type" : 4}
+    },
+    "MPI_File_read" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_read_all" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_iread_all" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_read_at" : {
+        "fn" : typecount,
+        "args" : {"count" : 3, "type" : 4}
+    },
+    "MPI_File_read_at_all" : {
+        "fn" : typecount,
+        "args" : {"count" : 3, "type" : 4}
+    },
+    "MPI_File_iread_at_all" : {
+        "fn" : typecount,
+        "args" : {"count" : 3, "type" : 4}
+    },
+    "MPI_File_iread" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_read_shared" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_iread_shared" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
+    },
+    "MPI_File_read_ordered" : {
+        "fn" : typecount,
+        "args" : {"count" : 2, "type" : 3}
     },
 }
 
