@@ -241,6 +241,11 @@ They're not designed for making wrappers, but declarations of lots of variables 
 		static double overhead_time_0;
 
 
+* `{{size <dir>}}`
+	Generate code do extract MPI call size. This defines variables initialized accordingly.
+    `<dir>` can be `in`, `out` or nothing. This respectively defines `_size_in`, `_size_out` and `_size` in the corresponding function. Note that `_size = _size_in + _size_out`, meaning that `{{size}}` will define all three variables. Size can only be invoked once per function. Note that Intercommunicators collectives are not yet supported.
+
+
 * `{{vardecl <type> <arg> <arg> ...}}` *(not yet supported)*
 	Declare variables within a wrapper definition.  Wrap will decorate
     the variable name to prevent collisions.

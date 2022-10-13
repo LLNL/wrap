@@ -31,6 +31,9 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #################################################################################################
 from __future__ import print_function
+import json
+
+from numpy import size
 usage_string = \
 '''Usage: wrap.py [-fgd] [-i pmpi_init] [-c mpicc_name] [-o file] wrapper.w [...]
  Python script for creating PMPI wrappers. Roughly follows the syntax of
@@ -54,6 +57,8 @@ usage_string = \
  by Todd Gamblin, tgamblin@llnl.gov
 '''
 import tempfile, getopt, subprocess, sys, os, re, types, itertools
+
+from sizer import MpiCallSize
 
 # Default values for command-line parameters
 mpicc = 'mpicc'                    # Default name for the MPI compiler
@@ -160,6 +165,11 @@ wrapper_diagnosics_macros = '''
 #endif
 
 '''
+
+sizer = MpiCallSize()
+
+mpi_size_helpers = sizer.header_code()
+
 
 # Default modifiers for generated bindings
 default_modifiers = ["_EXTERN_C_"]  # _EXTERN_C_ is #defined (or not) in wrapper_includes. See above.
@@ -349,6 +359,12 @@ class Scope:
 
     def __setitem__(self, key, value):
         self.map[key] = value
+
+    def dump(self):
+        print("@@", self)
+        print(self.map)
+        if self.enclosing_scope:
+            self.enclosing_scope.dump()
 
     def include(self, map):
         """Add entire contents of the map (or scope) to this scope."""
@@ -864,7 +880,7 @@ def handle_list(list_name, list, args):
         except ValueError:
             syntax_error("Invald index value: '%s'" % args[0])
         except IndexError:
-            syntax_error("Index out of range in '%s': %d" % (list_name, index))
+            syntax_error("Index out of range in '%s': %d" % (list_name, args[0]))
 
 class TypeApplier:
     """This class implements a Macro function for applying something callable to
@@ -920,6 +936,7 @@ def foreachfn(out, scope, args, children):
         fn = mpi_functions[fn_name]
         fn_scope = Scope(scope)
         fn_scope[fn_var] = fn_name
+        fn_scope["mpi_func"] = fn_name
         include_decl(fn_scope, fn)
 
         for child in children:
@@ -943,6 +960,7 @@ def fn(out, scope, args, children):
 
         fn_scope = Scope(scope)
         fn_scope[fn_var] = fn_name
+        fn_scope["mpi_func"] = fn_name
         include_decl(fn_scope, fn)
 
         fn_scope["ret_val"] = return_val
@@ -1074,6 +1092,22 @@ def fn_num(out, scope, args, children):
 fn_num.val = 0  # init the counter here.
 
 
+@macro("size")
+def fn_size(out, scope, args, children):
+    myscope = Scope(scope)
+    func = myscope["mpi_func"]
+    f_args = myscope["args"]
+    if len(args):
+        if args[0] == "in":
+            out.write(sizer.sizein(func, f_args))
+        elif args[0] == "out":
+            out.write(sizer.sizeout(func, f_args))
+        else:
+            syntax_error("Only 'in', 'out' or no arguments"\
+                        "is accepted by macro 'size' got {}".format(arg[0]))
+    else:
+        out.write(sizer.size(func, f_args))
+
 ################################################################################
 # Parser support:
 #   - Chunk class for bits of parsed text on which macros are executed.
@@ -1092,7 +1126,7 @@ class Chunk:
 
     def iwrite(self, file, level, text):
         """Write indented text."""
-        for x in xrange(level):
+        for x in range(level):
             file.write("  ")
         file.write(text)
 
@@ -1216,7 +1250,7 @@ class Parser:
 
         if not accept_body_macros and self.is_body_macro(chunk.macro):
             syntax_error("Cannot use body macros in expression context: '%s'" % chunk.macro)
-            eys.exit(1)
+            sys.exit(1)
 
         while True:
             if self.accept(LBRACE):
@@ -1295,7 +1329,7 @@ for opt, arg in opts:
         if stripped: includes.append(stripped)
     if opt == "-i":
         if not arg in pmpi_init_bindings:
-            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(possible_bindings))
+            sys.stderr.write("ERROR: PMPI_Init binding must be one of:\n    %s\n" % " ".join(pmpi_init_bindings))
             usage()
         else:
             pmpi_init_binding = arg
@@ -1333,6 +1367,10 @@ try:
     # Print the macros for disabling MPI function deprecation warnings.
     if ignore_deprecated:
         output.write(wrapper_diagnosics_macros)
+
+    # Print MPI size helpers
+    if not skip_headers:
+        output.write(mpi_size_helpers)
 
     # Parse each file listed on the command line and execute
     # it once it's parsed.
